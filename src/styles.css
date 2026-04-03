@@ -1,0 +1,352 @@
+:root {
+  --bg: #1a1b1e;
+  --surface: #25262b;
+  --border: #373a40;
+  --text: #e9ecef;
+  --muted: #868e96;
+  --accent: #4dabf7;
+  --chord-color: #ffa94d;
+  --lyric-color: #e9ecef;
+
+  --chord-min-height: 28px;
+  --lyric-min-height: 40px;
+  --chord-font-size: 13px;
+  --lyric-font-size: 16px;
+  --editor-font: ui-monospace, "Cascadia Mono", "Segoe UI Mono", "Noto Sans Mono",
+    "Liberation Mono", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 2rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar h1 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  flex: 1 1 100%;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.toolbar label {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+button,
+select {
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+button:hover,
+select:hover {
+  border-color: var(--muted);
+}
+
+button.primary {
+  background: #1c7ed6;
+  border-color: #1971c2;
+  color: #fff;
+}
+
+button.primary:hover {
+  background: #228be6;
+}
+
+.config-panel {
+  display: none;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.75rem 1rem;
+  padding: 0.75rem 0 0;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.config-panel.open {
+  display: grid;
+}
+
+.config-panel fieldset {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.config-panel legend {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.45rem;
+}
+
+.config-row:first-of-type {
+  margin-top: 0;
+}
+
+.config-row input[type='number'] {
+  width: 4.5rem;
+  font: inherit;
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.config-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.4;
+  margin: 0 0 1rem;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stanza-row {
+  display: flex;
+  flex-direction: column;
+  border-left: 3px solid var(--border);
+  padding-left: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.stanza-row:focus-within {
+  border-left-color: var(--accent);
+}
+
+.row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.3rem;
+}
+
+.row-kind-label {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.row-kind-select {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 4px;
+}
+
+.lyric-stage {
+  position: relative;
+  width: 100%;
+  overflow: visible;
+}
+
+.lyric-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: calc(var(--chord-min-height) + 0.35rem) 0.4rem 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--lyric-color);
+  font-family: var(--editor-font);
+  font-size: var(--lyric-font-size);
+  line-height: 1.35;
+  resize: vertical;
+  field-sizing: content;
+  min-height: calc(var(--lyric-min-height) + var(--chord-min-height) + 0.8rem);
+  overflow: auto;
+  position: relative;
+  z-index: 1;
+  user-select: text;
+  cursor: text;
+}
+
+.lyric-input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+.lyric-input:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.stanza-row[data-dir='rtl'] .lyric-input {
+  direction: rtl;
+  text-align: right;
+}
+
+.stanza-row[data-dir='ltr'] .lyric-input {
+  direction: ltr;
+  text-align: left;
+}
+
+.chord-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+.lyric-mirror {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.caret-marker {
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+}
+
+.chord-zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: calc(var(--chord-min-height) + 0.5rem);
+  z-index: 1;
+  background: transparent;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.lyric-stage:hover .chord-zone {
+  cursor: crosshair;
+}
+
+.stanza-row[data-kind='header'] .chord-zone,
+.stanza-row[data-kind='header'] .chord-overlay {
+  display: none;
+}
+
+.stanza-row[data-kind='header'] .lyric-input {
+  padding-top: 0.4rem;
+  border-color: #5c7cfa;
+  color: #dbe4ff;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.stanza-row[data-kind='chords'] .lyric-input {
+  color: rgba(233, 236, 239, 0.15);
+  caret-color: var(--muted);
+}
+
+.stanza-row[data-kind='chords'] .lyric-input::placeholder {
+  color: rgba(134, 142, 150, 0.35);
+}
+
+.chord-bubble {
+  position: absolute;
+  pointer-events: auto;
+  width: auto;
+  min-width: 2.6ch;
+  padding: 0.1rem 0.2rem;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: rgba(37, 38, 43, 0.95);
+  color: var(--chord-color);
+  font-family: var(--editor-font);
+  font-size: var(--chord-font-size);
+  font-weight: 600;
+  line-height: 1.2;
+  transform: translateX(-50%);
+  text-align: center;
+  direction: ltr;
+  unicode-bidi: isolate;
+  user-select: none;
+  cursor: grab;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.chord-bubble:readonly {
+  cursor: grab;
+}
+
+.chord-bubble:not(:readonly) {
+  cursor: text;
+}
+
+.chord-bubble.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(77, 171, 247, 0.2);
+}
+
+.chord-bubble:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+body.use-system-font .lyric-input,
+body.use-system-font .chord-bubble {
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
