@@ -29,7 +29,9 @@ function renderLyricsWithChords(lyrics, chordMap, cfg) {
       const glyph = line[i];
       const chord = ch[idx] ? escapeHtml(ch[idx]) : '';
       cells.push(
-        `<span class="cell"><span class="chord-slot">${chord}</span><span class="glyph">${escapeHtml(glyph)}</span></span>`,
+        chord
+          ? `<span class="cell"><span class="chord-slot">${chord}</span><span class="glyph">${escapeHtml(glyph)}</span></span>`
+          : `<span class="cell"><span class="glyph">${escapeHtml(glyph)}</span></span>`,
       );
     }
     parts.push(`<div class="line">${cells.join('')}</div>`);
@@ -47,6 +49,15 @@ function renderHeaderLine(text, cfg) {
   return `<div class="header-line" style="font-size:${cfg.lyricFontSize}px">${safe}</div>`;
 }
 
+function renderChordsOnly(chords, cfg) {
+  const normalized = normalizeChordMap(chords);
+  const sorted = Object.entries(normalized)
+    .sort(([a], [b]) => Number(a) - Number(b))
+    .map(([, v]) => `<span class="chord-name">${escapeHtml(v)}</span>`);
+  if (sorted.length === 0) return '<div class="chord-progression"></div>';
+  return `<div class="chord-progression">${sorted.join('')}</div>`;
+}
+
 /**
  * @param {{ lyrics: string; chords: Record<string, string>; dir: string; kind?: string }[]} snapshots
  * @param {{ chordMinHeight: number; lyricMinHeight: number; chordFontSize: number; lyricFontSize: number; useMonospace: boolean }} cfg
@@ -61,6 +72,10 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
       if (row.kind === 'header') {
         const inner = renderHeaderLine(row.lyrics ?? '', cfg);
         return `<section class="block header-block" dir="${lyricDir}">${inner}</section>`;
+      }
+      if (row.kind === 'chords') {
+        const inner = renderChordsOnly(row.chords ?? {}, cfg);
+        return `<section class="block chords-block" dir="${lyricDir}">${inner}</section>`;
       }
       const inner = renderLyricsWithChords(row.lyrics ?? '', row.chords ?? {}, cfg);
       return `<section class="block" dir="${lyricDir}">${inner}</section>`;
@@ -114,30 +129,45 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
       color: #111;
     }
     .line {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: flex-end;
-      min-height: calc(${cfg.chordMinHeight}px + 1em);
-      margin-bottom: 0.15rem;
+      position: relative;
+      padding-top: ${cfg.chordMinHeight}px;
+      margin-bottom: 0.25rem;
     }
     .cell {
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
-      vertical-align: bottom;
+      display: inline-block;
+      position: relative;
+      vertical-align: top;
     }
     .chord-slot {
-      min-height: ${cfg.chordMinHeight}px;
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
       font-size: ${cfg.chordFontSize}px;
       font-weight: 600;
       color: #9a3412;
-      white-space: nowrap;
       line-height: 1.1;
-      padding-bottom: 0.1rem;
     }
     .glyph {
       font-family: inherit;
       white-space: pre;
+      line-height: 1.4;
+    }
+    .chords-block {
+      margin-bottom: 0.5rem;
+    }
+    .chord-progression {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem 1.75rem;
+      padding: 0.15rem 0 0.25rem;
+      font-size: ${cfg.chordFontSize}px;
+      font-weight: 600;
+      color: #9a3412;
+    }
+    .chord-name {
+      white-space: nowrap;
     }
     @media print {
       body {

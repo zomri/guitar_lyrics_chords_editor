@@ -31,6 +31,12 @@ function saveConfig(cfg) {
   localStorage.setItem(STORAGE_CFG, JSON.stringify(cfg));
 }
 
+function normalizeKind(v) {
+  if (v === 'header') return 'header';
+  if (v === 'chords') return 'chords';
+  return 'line';
+}
+
 function loadSongList() {
   try {
     const raw = localStorage.getItem(STORAGE_SONGS);
@@ -107,7 +113,7 @@ function loadDoc() {
       lyrics: r.lyrics ?? '',
       chords: normalizeChordMap(r.chords),
       dir: r.dir === 'rtl' ? 'rtl' : 'ltr',
-      kind: r.kind === 'header' ? 'header' : 'line',
+      kind: normalizeKind(r.kind),
     }));
   }
 
@@ -132,7 +138,7 @@ function loadDoc() {
       lyrics: r.lyrics ?? '',
       chords: normalizeChordMap(r.chords),
       dir: r.dir === 'rtl' ? 'rtl' : 'ltr',
-      kind: r.kind === 'header' ? 'header' : 'line',
+      kind: normalizeKind(r.kind),
     }));
   } catch {
     return [{ lyrics: '', chords: {}, dir: 'ltr' }];
@@ -144,7 +150,7 @@ function saveDoc(rows) {
     lyrics: r.lyricsEl.value,
     chords: normalizeChordMap(r.chords),
     dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
-    kind: r.wrap.dataset.kind === 'header' ? 'header' : 'line',
+    kind: normalizeKind(r.wrap.dataset.kind),
   }));
   
   const currentName = getCurrentSongName();
@@ -194,7 +200,7 @@ function collectSnapshots(rows) {
     lyrics: r.lyricsEl.value,
     chords: normalizeChordMap(r.chords),
     dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
-    kind: r.wrap.dataset.kind === 'header' ? 'header' : 'line',
+    kind: normalizeKind(r.wrap.dataset.kind),
   }));
 }
 
@@ -208,7 +214,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   const wrap = document.createElement('div');
   wrap.className = 'stanza-row';
   wrap.dataset.dir = data.dir === 'rtl' ? 'rtl' : 'ltr';
-  wrap.dataset.kind = data.kind === 'header' ? 'header' : 'line';
+  wrap.dataset.kind = normalizeKind(data.kind);
 
   const rowMeta = document.createElement('div');
   rowMeta.className = 'row-meta';
@@ -219,6 +225,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   kindSelect.className = 'row-kind-select';
   kindSelect.innerHTML = `
     <option value="line">Lyrics + Chords</option>
+    <option value="chords">Chords only (transition)</option>
     <option value="header">Header (Verse / Chorus)</option>
   `;
   kindSelect.value = wrap.dataset.kind;
@@ -281,7 +288,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   Object.defineProperty(row, 'kind', {
     get: () => wrap.dataset.kind,
     set: (v) => {
-      const next = v === 'header' ? 'header' : 'line';
+      const next = normalizeKind(v);
       wrap.dataset.kind = next;
       kindSelect.value = next;
       onChange();
@@ -292,6 +299,8 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   const syncRowKindUI = () => {
     if (row.kind === 'header') {
       lyricsEl.placeholder = 'Section header (e.g., Verse 1 / Chorus)';
+    } else if (row.kind === 'chords') {
+      lyricsEl.placeholder = 'Type letters/spaces to position chords (text hidden in output)';
     } else {
       lyricsEl.placeholder = 'Lyrics — place the caret on a letter, then set a chord above it.';
     }
@@ -608,7 +617,8 @@ function mount() {
         <select id="sel-song">
           <option value="">New song</option>
         </select>
-        <button type="button" id="btn-song-save">Save song</button>
+        <button type="button" id="btn-song-save">Save</button>
+        <button type="button" id="btn-song-save-as">Save As</button>
         <button type="button" id="btn-song-delete">Delete</button>
       </div>
       <div class="toolbar-group">
@@ -732,7 +742,7 @@ function mount() {
       lyrics: '',
       chords: {},
       dir: afterRow?.wrap?.dataset?.dir || cfg.defaultDirection,
-      kind: afterRow?.wrap?.dataset?.kind === 'header' ? 'header' : 'line',
+      kind: normalizeKind(afterRow?.wrap?.dataset?.kind),
     };
     const next = afterRow?.wrap?.nextSibling ?? null;
     const newRow = createRow(editor, d, () => cfg, onRowChange, next, layoutSchedule);
@@ -899,10 +909,18 @@ function mount() {
     switchSong(name || null);
   });
 
-  app.querySelector('#btn-song-save').addEventListener('click', () => {
-    const name = prompt('Song name:');
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
+  const flashButtonText = (selector, text, duration = 1200) => {
+    const b = app.querySelector(selector);
+    const prev = b.textContent;
+    b.textContent = text;
+    setTimeout(() => {
+      b.textContent = prev;
+    }, duration);
+  };
+
+  const saveSongByName = (name) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return false;
     const list = loadSongList();
     if (!list.includes(trimmed)) {
       list.push(trimmed);
@@ -911,12 +929,31 @@ function mount() {
     saveSong(trimmed, collectSnapshots(rows));
     setCurrentSongName(trimmed);
     updateSongList();
-    const b = app.querySelector('#btn-song-save');
-    const prev = b.textContent;
-    b.textContent = 'Saved!';
-    setTimeout(() => {
-      b.textContent = prev;
-    }, 1500);
+    return true;
+  };
+
+  app.querySelector('#btn-song-save').addEventListener('click', () => {
+    const current = getCurrentSongName();
+    if (!current) {
+      const name = prompt('Song name:');
+      if (!name || !name.trim()) return;
+      if (saveSongByName(name)) {
+        flashButtonText('#btn-song-save', 'Saved!');
+      }
+      return;
+    }
+    if (saveSongByName(current)) {
+      flashButtonText('#btn-song-save', 'Saved!');
+    }
+  });
+
+  app.querySelector('#btn-song-save-as').addEventListener('click', () => {
+    const current = getCurrentSongName();
+    const name = prompt('Save song as:', current || '');
+    if (!name || !name.trim()) return;
+    if (saveSongByName(name)) {
+      flashButtonText('#btn-song-save-as', 'Saved!');
+    }
   });
 
   app.querySelector('#btn-song-delete').addEventListener('click', () => {

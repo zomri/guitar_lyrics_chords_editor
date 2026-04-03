@@ -295,6 +295,15 @@ button.primary:hover {
   text-decoration: underline;
 }
 
+.stanza-row[data-kind='chords'] .lyric-input {
+  color: rgba(233, 236, 239, 0.15);
+  caret-color: var(--muted);
+}
+
+.stanza-row[data-kind='chords'] .lyric-input::placeholder {
+  color: rgba(134, 142, 150, 0.35);
+}
+
 .chord-bubble {
   position: absolute;
   pointer-events: auto;
