@@ -49,11 +49,22 @@ function renderHeaderLine(text, cfg) {
   return `<div class="header-line" style="font-size:${cfg.lyricFontSize}px">${safe}</div>`;
 }
 
-function renderChordsOnly(chords, cfg) {
+function renderChordsOnly(chords, fallbackText, cfg) {
   const normalized = normalizeChordMap(chords);
-  const sorted = Object.entries(normalized)
+  let sorted = Object.entries(normalized)
     .sort(([a], [b]) => Number(a) - Number(b))
     .map(([, v]) => `<span class="chord-name">${escapeHtml(v)}</span>`);
+
+  // Fallback for rows where users typed chord progression as plain text.
+  if (sorted.length === 0) {
+    const fromText = String(fallbackText || '')
+      .split(/\r?\n/)
+      .flatMap((line) => line.trim().split(/\s+/))
+      .filter(Boolean)
+      .map((v) => `<span class="chord-name">${escapeHtml(v)}</span>`);
+    sorted = fromText;
+  }
+
   if (sorted.length === 0) return '<div class="chord-progression"></div>';
   return `<div class="chord-progression">${sorted.join('')}</div>`;
 }
@@ -74,7 +85,7 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
         return `<section class="block header-block" dir="${lyricDir}">${inner}</section>`;
       }
       if (row.kind === 'chords') {
-        const inner = renderChordsOnly(row.chords ?? {}, cfg);
+        const inner = renderChordsOnly(row.chords ?? {}, row.lyrics ?? '', cfg);
         return `<section class="block chords-block" dir="${lyricDir}">${inner}</section>`;
       }
       const inner = renderLyricsWithChords(row.lyrics ?? '', row.chords ?? {}, cfg);

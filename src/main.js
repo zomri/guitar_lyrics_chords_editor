@@ -295,6 +295,28 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   rowMeta.appendChild(kindLabel);
   rowMeta.appendChild(kindSelect);
 
+  const rowSelectCb = document.createElement('input');
+  rowSelectCb.type = 'checkbox';
+  rowSelectCb.className = 'row-select-cb';
+  rowSelectCb.title = 'Select row for multi-row chord copy';
+
+  const btnCopyChords = document.createElement('button');
+  btnCopyChords.type = 'button';
+  btnCopyChords.className = 'row-action-btn';
+  btnCopyChords.textContent = 'Copy chords';
+  btnCopyChords.title = 'Copy chords from this row (or all selected rows)';
+
+  const btnPasteChords = document.createElement('button');
+  btnPasteChords.type = 'button';
+  btnPasteChords.className = 'row-action-btn';
+  btnPasteChords.textContent = 'Paste chords';
+  btnPasteChords.title = 'Paste copied chords starting at this row';
+  btnPasteChords.disabled = true;
+
+  rowMeta.appendChild(rowSelectCb);
+  rowMeta.appendChild(btnCopyChords);
+  rowMeta.appendChild(btnPasteChords);
+
   const stage = document.createElement('div');
   stage.className = 'lyric-stage';
 
@@ -658,6 +680,25 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   });
 
   row.layoutChords = layoutChords;
+
+  row.isSelected = () => rowSelectCb.checked;
+  row.setSelected = (v) => { rowSelectCb.checked = Boolean(v); };
+  row.setPasteEnabled = (v) => { btnPasteChords.disabled = !v; };
+  row.flashCopyBtn = () => {
+    const prev = btnCopyChords.textContent;
+    btnCopyChords.textContent = 'Copied!';
+    setTimeout(() => { btnCopyChords.textContent = prev; }, 1000);
+  };
+
+  btnCopyChords.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onCopyChords?.();
+  });
+  btnPasteChords.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onPasteChords?.();
+  });
+
   row.dispose = () => {
     ro.disconnect();
   };
@@ -797,6 +838,37 @@ function mount() {
 
   const onRowChange = () => persistAll();
 
+  let chordsClipboard = [];
+
+  const updatePasteButtons = () => {
+    const has = chordsClipboard.length > 0;
+    for (const r of rows) r.setPasteEnabled?.(has);
+  };
+
+  const wireChordsHandlers = (row) => {
+    row.onCopyChords = () => {
+      const selectedRows = rows.filter((r) => r.isSelected?.());
+      const source = (selectedRows.length > 0 && selectedRows.includes(row))
+        ? selectedRows
+        : [row];
+      chordsClipboard = source.map((r) => ({ ...normalizeChordMap(r.chords) }));
+      updatePasteButtons();
+      row.flashCopyBtn?.();
+    };
+    row.onPasteChords = () => {
+      if (chordsClipboard.length === 0) return;
+      const startIdx = rows.indexOf(row);
+      if (startIdx < 0) return;
+      for (let i = 0; i < chordsClipboard.length; i++) {
+        const target = rows[startIdx + i];
+        if (!target) break;
+        target.chords = { ...chordsClipboard[i] };
+        layoutSchedule(target);
+      }
+      persistAll();
+    };
+  };
+
   const wireInsertHandler = (row) => {
     row.onInsertAfter = () => insertRowAfter(row);
   };
@@ -817,6 +889,8 @@ function mount() {
       rows.push(newRow);
     }
     wireInsertHandler(newRow);
+    wireChordsHandlers(newRow);
+    updatePasteButtons();
     persistAll();
     newRow.lyricsEl.focus();
   };
@@ -829,8 +903,10 @@ function mount() {
     rows = data.map((d) => createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule));
     rows.forEach((r) => {
       wireInsertHandler(r);
+      wireChordsHandlers(r);
       r.layoutChords?.();
     });
+    updatePasteButtons();
     persistAll();
   };
 
@@ -848,6 +924,8 @@ function mount() {
     const row = createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule);
     rows.push(row);
     wireInsertHandler(row);
+    wireChordsHandlers(row);
+    updatePasteButtons();
     persistAll();
     row.lyricsEl.focus();
     layoutSchedule(row);

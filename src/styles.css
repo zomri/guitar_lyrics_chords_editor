@@ -191,6 +191,37 @@ button.primary:hover {
   border-radius: 4px;
 }
 
+.row-select-cb {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+  margin-left: 0.5rem;
+}
+
+.row-action-btn {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  margin-left: 0.15rem;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.row-action-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+.row-action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .lyric-stage {
   position: relative;
   width: 100%;
