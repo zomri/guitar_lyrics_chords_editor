@@ -169,13 +169,70 @@ function applyConfigToRoot(cfg, root, body) {
   body.classList.toggle('use-system-font', !cfg.useMonospace);
 }
 
+function normalizeRowArray(data, fallbackDir = 'ltr') {
+  if (!Array.isArray(data) || data.length === 0) {
+    return [{ lyrics: '', chords: {}, dir: fallbackDir, kind: 'line' }];
+  }
+  return data.map((r) => ({
+    lyrics: r?.lyrics ?? '',
+    chords: normalizeChordMap(r?.chords),
+    dir: r?.dir === 'rtl' ? 'rtl' : 'ltr',
+    kind: normalizeKind(r?.kind),
+  }));
+}
+
 function exportText(rows) {
-  return rows
-    .map((r) => {
+  const payload = {
+    format: 'lyrics-chords-rows-v2',
+    rows: rows.map((r) => ({
+      lyrics: r.lyricsEl.value,
+      chords: normalizeChordMap(r.chords),
+      dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
+      kind: normalizeKind(r.wrap.dataset.kind),
+    })),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+function importText(text, defaultDirection = 'ltr') {
+  const raw = String(text || '').trim();
+  if (!raw) {
+    return [{ lyrics: '', chords: {}, dir: defaultDirection, kind: 'line' }];
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return normalizeRowArray(parsed, defaultDirection);
+    }
+    if (parsed && Array.isArray(parsed.rows)) {
+      return normalizeRowArray(parsed.rows, defaultDirection);
+    }
+  } catch {
+    // Fallback to legacy text parsing.
+  }
+
+  const blocks = raw.split(/\n\s*\n+/).map((b) => b.trim()).filter(Boolean);
+  const rows = blocks.map((block) => {
+    const lines = block.split(/\r?\n/);
+    let dir = defaultDirection === 'rtl' ? 'rtl' : 'ltr';
+    let kind = 'line';
+    let lyrics = '';
+    const chords = {};
+
+    const dirLine = lines.find((l) => l.startsWith('DIR:'));
+    if (dirLine) {
+      const val = dirLine.slice('DIR:'.length).trim();
+      dir = val === 'rtl' ? 'rtl' : 'ltr';
+    }
+
+    const kindLine = lines.find((l) => l.startsWith('KIND:'));
+    if (kindLine) {
+      kind = normalizeKind(kindLine.slice('KIND:'.length).trim());
+    }
 
     const chordLineIndex = lines.findIndex((l) => l.startsWith('CHORDS:'));
     if (chordLineIndex >= 0) {
-      lyrics = lines.slice(0, chordLineIndex).join('\n');
       const part = lines[chordLineIndex].slice('CHORDS:'.length).trim();
       if (part) {
         for (const pair of part.split(',')) {
@@ -187,12 +244,18 @@ function exportText(rows) {
           if (Number.isFinite(n) && v) chords[n] = v;
         }
       }
+      const lyricLines = lines.filter(
+        (l, i) => i < chordLineIndex && !l.startsWith('DIR:') && !l.startsWith('KIND:') && l !== 'LYRICS:'
+      );
+      lyrics = lyricLines.join('\n');
     } else {
-      lyrics = lines.join('\n');
+      lyrics = lines.filter((l) => !l.startsWith('DIR:') && !l.startsWith('KIND:') && l !== 'LYRICS:').join('\n');
     }
 
-    return { lyrics, chords: normalizeChordMap(chords), dir };
+    return { lyrics, chords: normalizeChordMap(chords), dir, kind };
   });
+
+  return normalizeRowArray(rows, defaultDirection);
 }
 
 function collectSnapshots(rows) {
@@ -622,8 +685,10 @@ function mount() {
         <button type="button" id="btn-song-delete">Delete</button>
       </div>
       <div class="toolbar-group">
-        <button type="button" id="btn-song-export">Export to file</button>
-        <button type="button" id="btn-song-import">Import from file</button>
+        <button type="button" id="btn-song-export">Export song</button>
+        <button type="button" id="btn-song-import">Import song</button>
+        <button type="button" id="btn-song-export-all">Export all songs</button>
+        <button type="button" id="btn-song-import-all">Import all songs</button>
       </div>
       <div class="toolbar-group">
         <button type="button" class="primary" id="btn-add">Add line</button>
@@ -932,6 +997,19 @@ function mount() {
     return true;
   };
 
+  const downloadJsonFile = (obj, filename) => {
+    const json = JSON.stringify(obj, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   app.querySelector('#btn-song-save').addEventListener('click', () => {
     const current = getCurrentSongName();
     if (!current) {
@@ -983,16 +1061,7 @@ function mount() {
         kind: s.kind,
       })),
     };
-    const json = JSON.stringify(payload, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${name.replace(/\W+/g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    downloadJsonFile(payload, `${name.replace(/\W+/g, '-')}.json`);
   });
 
   app.querySelector('#btn-song-import').addEventListener('click', () => {
@@ -1018,6 +1087,92 @@ function mount() {
           }
           saveSong(songName, payload.data);
           switchSong(songName);
+        } catch {
+          alert('Error parsing file');
+        }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
+  });
+
+  app.querySelector('#btn-song-export-all').addEventListener('click', () => {
+    const list = loadSongList();
+    if (list.length === 0) {
+      alert('No saved songs to export');
+      return;
+    }
+    const songs = list.map((name) => ({
+      name,
+      data: normalizeRowArray(loadSong(name), cfg.defaultDirection),
+    }));
+    const payload = {
+      format: 'lyrics-chords-song-library-v1',
+      exportedAt: new Date().toISOString(),
+      currentSong: getCurrentSongName(),
+      songs,
+    };
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadJsonFile(payload, `songs-library-${stamp}.json`);
+    flashButtonText('#btn-song-export-all', 'Exported!');
+  });
+
+  app.querySelector('#btn-song-import-all').addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const payload = JSON.parse(evt.target.result);
+          const songs = Array.isArray(payload?.songs) ? payload.songs : null;
+          if (!songs || songs.length === 0) {
+            alert('Invalid library file format');
+            return;
+          }
+
+          const replaceAll = confirm(
+            'Replace all existing saved songs with imported songs?\nClick Cancel to merge with existing songs.'
+          );
+
+          const existingList = loadSongList();
+          let nextList = replaceAll ? [] : [...existingList];
+
+          if (replaceAll) {
+            for (const name of existingList) {
+              deleteSong(name);
+            }
+          }
+
+          let importedCount = 0;
+          for (const entry of songs) {
+            const name = String(entry?.name || '').trim();
+            if (!name) continue;
+            const data = normalizeRowArray(entry?.data, cfg.defaultDirection);
+            saveSong(name, data);
+            if (!nextList.includes(name)) {
+              nextList.push(name);
+            }
+            importedCount += 1;
+          }
+
+          if (importedCount === 0) {
+            alert('No valid songs found in file');
+            return;
+          }
+
+          saveSongList(nextList);
+          updateSongList();
+
+          const preferredCurrent = String(payload?.currentSong || '').trim();
+          const nextCurrent = nextList.includes(preferredCurrent) ? preferredCurrent : nextList[0];
+          switchSong(nextCurrent);
+
+          alert(`Imported ${importedCount} songs`);
+          flashButtonText('#btn-song-import-all', 'Imported!');
         } catch {
           alert('Error parsing file');
         }
