@@ -151,6 +151,7 @@ function saveDoc(rows) {
     chords: normalizeChordMap(r.chords),
     dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
     kind: normalizeKind(r.wrap.dataset.kind),
+    sectionEnd: r._sectionEnd ?? false,
   }));
   
   const currentName = getCurrentSongName();
@@ -189,6 +190,7 @@ function exportText(rows) {
       chords: normalizeChordMap(r.chords),
       dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
       kind: normalizeKind(r.wrap.dataset.kind),
+      sectionEnd: r._sectionEnd ?? false,
     })),
   };
   return JSON.stringify(payload, null, 2);
@@ -264,6 +266,7 @@ function collectSnapshots(rows) {
     chords: normalizeChordMap(r.chords),
     dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
     kind: normalizeKind(r.wrap.dataset.kind),
+    sectionEnd: r._sectionEnd ?? false,
   }));
 }
 
@@ -310,12 +313,49 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   btnPasteChords.type = 'button';
   btnPasteChords.className = 'row-action-btn';
   btnPasteChords.textContent = 'Paste chords';
-  btnPasteChords.title = 'Paste copied chords starting at this row';
+  btnPasteChords.title = 'Paste copied chords to this row';
   btnPasteChords.disabled = true;
 
+  const sectionSelectCb = document.createElement('input');
+  sectionSelectCb.type = 'checkbox';
+  sectionSelectCb.className = 'row-select-cb';
+  sectionSelectCb.title = 'Select this section for copy/paste';
+  sectionSelectCb.style.display = data.kind === 'header' ? 'block' : 'none';
+
+  const btnCopySection = document.createElement('button');
+  btnCopySection.type = 'button';
+  btnCopySection.className = 'row-action-btn';
+  btnCopySection.textContent = 'Copy section';
+  btnCopySection.title = 'Copy all chords from rows in this section';
+  btnCopySection.style.display = data.kind === 'header' ? 'block' : 'none';
+
+  const btnPasteSection = document.createElement('button');
+  btnPasteSection.type = 'button';
+  btnPasteSection.className = 'row-action-btn';
+  btnPasteSection.textContent = 'Paste section';
+  btnPasteSection.title = 'Paste to all rows in this section';
+  btnPasteSection.disabled = true;
+  btnPasteSection.style.display = data.kind === 'header' ? 'block' : 'none';
+
+  const btnEndSection = document.createElement('button');
+  btnEndSection.type = 'button';
+  btnEndSection.className = 'row-action-btn row-end-section-btn';
+  btnEndSection.textContent = '⌄ End section';
+  btnEndSection.title = 'Mark end of section (next row starts new section)';
+  btnEndSection.style.display = data.kind === 'header' ? 'none' : 'block';
+
   rowMeta.appendChild(rowSelectCb);
+  rowMeta.appendChild(sectionSelectCb);
   rowMeta.appendChild(btnCopyChords);
+  rowMeta.appendChild(btnCopySection);
   rowMeta.appendChild(btnPasteChords);
+  rowMeta.appendChild(btnPasteSection);
+  rowMeta.appendChild(btnEndSection);
+
+  const sectionTag = document.createElement('span');
+  sectionTag.className = 'row-section-tag';
+  sectionTag.textContent = '';
+  rowMeta.appendChild(sectionTag);
 
   const stage = document.createElement('div');
   stage.className = 'lyric-stage';
@@ -342,6 +382,11 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   wrap.appendChild(rowMeta);
   wrap.appendChild(stage);
 
+  const sectionDivider = document.createElement('div');
+  sectionDivider.className = 'section-divider';
+  sectionDivider.style.display = 'none';
+  wrap.appendChild(sectionDivider);
+
   if (insertBefore != null) {
     editor.insertBefore(wrap, insertBefore);
   } else {
@@ -359,6 +404,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     _selectedChord: null,
     _pendingEditIndex: null,
     _editingIndex: null,
+    _sectionEnd: data.sectionEnd ?? false,
   };
 
   Object.defineProperty(row, 'dir', {
@@ -382,19 +428,53 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   });
 
   const syncRowKindUI = () => {
-    if (row.kind === 'header') {
+    const isHeader = row.kind === 'header';
+    if (isHeader) {
       lyricsEl.placeholder = 'Section header (e.g., Verse 1 / Chorus)';
+      rowSelectCb.style.display = 'none';
+      btnCopyChords.style.display = 'none';
+      btnPasteChords.style.display = 'none';
+      btnEndSection.style.display = 'none';
+      sectionSelectCb.style.display = 'block';
+      btnCopySection.style.display = 'block';
+      btnPasteSection.style.display = 'block';
     } else if (row.kind === 'chords') {
       lyricsEl.placeholder = 'Type letters/spaces to position chords (text hidden in output)';
+      rowSelectCb.style.display = 'block';
+      btnCopyChords.style.display = 'block';
+      btnPasteChords.style.display = 'block';
+      btnEndSection.style.display = 'block';
+      sectionSelectCb.style.display = 'none';
+      btnCopySection.style.display = 'none';
+      btnPasteSection.style.display = 'none';
     } else {
       lyricsEl.placeholder = 'Lyrics — place the caret on a letter, then set a chord above it.';
+      rowSelectCb.style.display = 'block';
+      btnCopyChords.style.display = 'block';
+      btnPasteChords.style.display = 'block';
+      btnEndSection.style.display = 'block';
+      sectionSelectCb.style.display = 'none';
+      btnCopySection.style.display = 'none';
+      btnPasteSection.style.display = 'none';
     }
+  };
+  const updateSectionEndUI = () => {
+    const isEnd = row._sectionEnd;
+    btnEndSection.classList.toggle('active', isEnd);
+    sectionDivider.style.display = isEnd ? 'block' : 'none';
   };
   kindSelect.addEventListener('change', () => {
     row.kind = kindSelect.value;
     syncRowKindUI();
   });
+  btnEndSection.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row._sectionEnd = !row._sectionEnd;
+    updateSectionEndUI();
+    onChange();
+  });
   syncRowKindUI();
+  updateSectionEndUI();
 
   const chordLift = () => Math.max(14, getCfg().chordFontSize + 6);
   const fitBubbleWidth = (input) => {
@@ -689,6 +769,23 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     btnCopyChords.textContent = 'Copied!';
     setTimeout(() => { btnCopyChords.textContent = prev; }, 1000);
   };
+  row.isSectionEnd = () => row._sectionEnd;
+  row.setSectionEnd = (v) => {
+    row._sectionEnd = Boolean(v);
+    updateSectionEndUI();
+  };
+  row.isSectionSelected = () => sectionSelectCb.checked;
+  row.setSectionSelected = (v) => { sectionSelectCb.checked = Boolean(v); };
+  row.setSectionPasteEnabled = (v) => { btnPasteSection.disabled = !v; };
+  row.flashCopySectionBtn = () => {
+    const prev = btnCopySection.textContent;
+    btnCopySection.textContent = 'Copied!';
+    setTimeout(() => { btnCopySection.textContent = prev; }, 1000);
+  };
+  row.setSectionTag = (text, show) => {
+    sectionTag.textContent = text;
+    sectionTag.style.display = show ? 'inline-block' : 'none';
+  };
 
   btnCopyChords.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -697,6 +794,14 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   btnPasteChords.addEventListener('click', (e) => {
     e.stopPropagation();
     row.onPasteChords?.();
+  });
+  btnCopySection.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onCopySection?.();
+  });
+  btnPasteSection.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onPasteSection?.();
   });
 
   row.dispose = () => {
@@ -836,13 +941,77 @@ function mount() {
     saveDoc(rows);
   };
 
-  const onRowChange = () => persistAll();
+  let activeSectionId = null;
+
+  const refreshSectionVisuals = () => {
+    let sectionCounter = 0;
+    let currentSectionId = null;
+    let currentSectionLabel = '';
+    let openSection = false;
+
+    for (const row of rows) {
+      const isHeader = row.kind === 'header';
+      const headerText = String(row.lyricsEl?.value || '').trim().split(/\r?\n/)[0] || '';
+
+      if (isHeader || !openSection) {
+        sectionCounter += 1;
+        currentSectionId = `section-${sectionCounter}`;
+        currentSectionLabel = isHeader
+          ? (headerText || `Section ${sectionCounter}`)
+          : `Section ${sectionCounter}`;
+        openSection = true;
+      }
+
+      row.wrap.dataset.sectionId = currentSectionId;
+      row.wrap.classList.toggle('section-child-row', !isHeader);
+      row.wrap.classList.toggle('section-header-row', isHeader);
+      row.setSectionTag?.(`in ${currentSectionLabel}`, !isHeader);
+
+      if (!isHeader && row.isSectionEnd?.()) {
+        openSection = false;
+      }
+    }
+
+    const focusedRow = rows.find((r) => r.lyricsEl === document.activeElement);
+    if (focusedRow) {
+      activeSectionId = focusedRow.wrap.dataset.sectionId || null;
+    }
+
+    for (const row of rows) {
+      row.wrap.classList.toggle(
+        'section-active',
+        Boolean(activeSectionId) && row.wrap.dataset.sectionId === activeSectionId
+      );
+    }
+  };
+
+  const onRowChange = () => {
+    persistAll();
+    refreshSectionVisuals();
+  };
 
   let chordsClipboard = [];
+  let sectionClipboard = [];
+
+  const getSectionRows = (headerRow) => {
+    const headerIdx = rows.indexOf(headerRow);
+    if (headerIdx < 0 || headerRow.kind !== 'header') return [];
+    const section = [headerRow];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (r.kind === 'header') break;
+      section.push(r);
+      if (r.isSectionEnd?.()) break;
+    }
+    return section;
+  };
 
   const updatePasteButtons = () => {
-    const has = chordsClipboard.length > 0;
-    for (const r of rows) r.setPasteEnabled?.(has);
+    const hasRowClipboard = chordsClipboard.length > 0;
+    for (const r of rows) {
+      r.setPasteEnabled?.(hasRowClipboard);
+      r.setSectionPasteEnabled?.(sectionClipboard.length > 0);
+    }
   };
 
   const wireChordsHandlers = (row) => {
@@ -867,6 +1036,25 @@ function mount() {
       }
       persistAll();
     };
+    if (row.kind === 'header') {
+      row.onCopySection = () => {
+        const section = getSectionRows(row);
+        const nonHeaderRows = section.filter((r) => r.kind !== 'header');
+        sectionClipboard = nonHeaderRows.map((r) => ({ ...normalizeChordMap(r.chords) }));
+        updatePasteButtons();
+        row.flashCopySectionBtn?.();
+      };
+      row.onPasteSection = () => {
+        if (sectionClipboard.length === 0) return;
+        const targetSection = getSectionRows(row);
+        const targetNonHeaders = targetSection.filter((r) => r.kind !== 'header');
+        for (let i = 0; i < sectionClipboard.length && i < targetNonHeaders.length; i++) {
+          targetNonHeaders[i].chords = { ...sectionClipboard[i] };
+          layoutSchedule(targetNonHeaders[i]);
+        }
+        persistAll();
+      };
+    }
   };
 
   const wireInsertHandler = (row) => {
@@ -904,8 +1092,13 @@ function mount() {
     rows.forEach((r) => {
       wireInsertHandler(r);
       wireChordsHandlers(r);
+      r.lyricsEl.addEventListener('focus', () => {
+        activeSectionId = r.wrap.dataset.sectionId || null;
+        refreshSectionVisuals();
+      });
       r.layoutChords?.();
     });
+    refreshSectionVisuals();
     updatePasteButtons();
     persistAll();
   };

@@ -197,7 +197,6 @@ button.primary:hover {
   cursor: pointer;
   accent-color: var(--accent);
   flex-shrink: 0;
-  margin-left: 0.5rem;
 }
 
 .row-action-btn {
@@ -208,8 +207,9 @@ button.primary:hover {
   background: var(--surface);
   color: var(--muted);
   cursor: pointer;
-  margin-left: 0.15rem;
-  transition: color 0.15s, border-color 0.15s;
+  margin: 0 0.1rem;
+  transition: color 0.15s, border-color 0.15s, background-color 0.15s;
+  white-space: nowrap;
 }
 
 .row-action-btn:hover:not(:disabled) {
@@ -220,6 +220,38 @@ button.primary:hover {
 .row-action-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.row-section-tag {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.row-end-section-btn.active {
+  background-color: rgba(77, 171, 247, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.section-divider {
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
+  margin: 0.5rem 0;
+  margin-left: 0.5rem;
+}
+
+.stanza-row.section-child-row {
+  margin-left: 1rem;
+}
+
+.stanza-row.section-active {
+  background: rgba(77, 171, 247, 0.07);
+  border-radius: 6px;
 }
 
 .lyric-stage {
