@@ -377,6 +377,12 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   btnEndSection.title = 'Mark end of section (next row starts new section)';
   btnEndSection.style.display = data.kind === 'header' ? 'none' : 'block';
 
+  const btnDeleteRow = document.createElement('button');
+  btnDeleteRow.type = 'button';
+  btnDeleteRow.className = 'row-action-btn row-delete-btn';
+  btnDeleteRow.textContent = 'Delete row';
+  btnDeleteRow.title = 'Delete this row';
+
   rowMeta.appendChild(rowSelectCb);
   rowMeta.appendChild(sectionSelectCb);
   rowMeta.appendChild(btnCopyChords);
@@ -385,6 +391,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   rowMeta.appendChild(btnPasteChords);
   rowMeta.appendChild(btnPasteSection);
   rowMeta.appendChild(btnEndSection);
+  rowMeta.appendChild(btnDeleteRow);
 
   const sectionTag = document.createElement('span');
   sectionTag.className = 'row-section-tag';
@@ -563,6 +570,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnCopySection.style.display = 'block';
       btnCloneSection.style.display = 'block';
       btnPasteSection.style.display = 'block';
+      btnDeleteRow.style.display = 'block';
     } else if (row.kind === 'chords') {
       lyricsEl.placeholder = 'Type letters/spaces to position chords (text hidden in output)';
       rowSelectCb.style.display = 'block';
@@ -574,6 +582,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnCopySection.style.display = 'none';
       btnCloneSection.style.display = 'none';
       btnPasteSection.style.display = 'none';
+      btnDeleteRow.style.display = 'block';
     } else {
       lyricsEl.placeholder = 'Lyrics — place the caret on a letter, then set a chord above it.';
       rowSelectCb.style.display = 'block';
@@ -585,6 +594,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnCopySection.style.display = 'none';
       btnCloneSection.style.display = 'none';
       btnPasteSection.style.display = 'none';
+      btnDeleteRow.style.display = 'block';
     }
   };
   const updateSectionEndUI = () => {
@@ -954,6 +964,10 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     e.stopPropagation();
     row.onPasteSection?.();
   });
+  btnDeleteRow.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onDelete?.();
+  });
 
   row.dispose = () => {
     ro.disconnect();
@@ -966,47 +980,49 @@ function mount() {
   const app = document.getElementById('app');
   let cfg = loadConfig();
   let rows = [];
+  let historyPast = [];
+  let historyFuture = [];
+  let historyCurrent = '[]';
+  let suppressHistory = false;
 
   const root = document.documentElement;
 
   app.innerHTML = `
     <header class="toolbar">
-      <h1>Lyrics &amp; chords</h1>
-      <div class="toolbar-group">
-        <label for="sel-song">Song:</label>
-        <select id="sel-song">
-          <option value="">New song</option>
-        </select>
-        <button type="button" id="btn-song-save">Save</button>
-        <button type="button" id="btn-song-save-as">Save As</button>
-        <button type="button" id="btn-song-delete">Delete</button>
-      </div>
-      <div class="toolbar-group">
-        <button type="button" id="btn-song-export">Export song</button>
-        <button type="button" id="btn-song-import">Import song</button>
-        <button type="button" id="btn-song-export-all">Export all songs</button>
-        <button type="button" id="btn-song-import-all">Import all songs</button>
-      </div>
-      <div class="toolbar-group">
-        <button type="button" class="primary" id="btn-add">Add line</button>
-        <button type="button" id="btn-del">Remove last line</button>
-      </div>
-      <div class="toolbar-group">
-        <label for="sel-dir">Direction (new lines)</label>
-        <select id="sel-dir">
-          <option value="ltr">LTR (English)</option>
-          <option value="rtl">RTL (Hebrew)</option>
-        </select>
-        <button type="button" id="btn-apply-dir">Apply direction to all</button>
-      </div>
-      <div class="toolbar-group">
+      <div class="toolbar-top">
+        <h1>Lyrics &amp; chords</h1>
         <button type="button" id="btn-guide">Quick guide</button>
-        <button type="button" id="btn-config">Row settings</button>
-        <button type="button" id="btn-export">Copy as text</button>
-        <button type="button" id="btn-import">Paste import</button>
-        <button type="button" id="btn-preview-html">Preview HTML</button>
-        <button type="button" id="btn-export-html">Download HTML</button>
-        <button type="button" id="btn-print-pdf">Print / Save PDF</button>
+      </div>
+      <div class="toolbar-row toolbar-row-song">
+        <div class="toolbar-group">
+          <label for="sel-song">Song:</label>
+          <select id="sel-song">
+            <option value="">New song</option>
+          </select>
+          <button type="button" id="btn-song-save">Save</button>
+          <button type="button" id="btn-song-save-as">Save As</button>
+          <button type="button" id="btn-song-delete">Delete</button>
+          <button type="button" id="btn-song-export">Export song</button>
+          <button type="button" id="btn-song-import">Import song</button>
+          <button type="button" id="btn-song-export-all">Export all songs</button>
+          <button type="button" id="btn-song-import-all">Import all songs</button>
+        </div>
+      </div>
+      <div class="toolbar-row toolbar-row-output">
+        <div class="toolbar-group">
+          <label for="sel-dir">Direction (new lines)</label>
+          <select id="sel-dir">
+            <option value="ltr">LTR (English)</option>
+            <option value="rtl">RTL (Hebrew)</option>
+          </select>
+          <button type="button" id="btn-apply-dir">Apply direction to all</button>
+          <button type="button" id="btn-config">Row settings</button>
+        </div>
+        <div class="toolbar-group toolbar-group-html-output">
+          <button type="button" id="btn-preview-html">Preview HTML</button>
+          <button type="button" id="btn-export-html">Download HTML</button>
+          <button type="button" id="btn-print-pdf">Print / Save PDF</button>
+        </div>
       </div>
     </header>
     <div class="config-panel" id="config-panel" aria-hidden="true"></div>
@@ -1041,9 +1057,25 @@ function mount() {
             <p>Use <strong>Preview HTML</strong> for quick view, then print/download when ready.</p>
             <div class="guide-visual">Preview HTML -> Download HTML / Print PDF</div>
           </section>
+          <section class="guide-card">
+            <h3>6. Arrange Layout</h3>
+            <p>After writing, use the <strong>Layout Board</strong> at the bottom to reorder sections and estimate page columns before export.</p>
+            <div class="guide-visual">Write first -> Layout Board -> Preview / Print</div>
+          </section>
         </div>
       </div>
     </div>
+    <p class="hint">
+      Type lyrics in the box, then <strong>double-click above the text</strong> to add a chord and type immediately.
+      <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
+      <strong>Double-click a chord</strong> to edit it. <kbd>Escape</kbd> to cancel or <kbd>Enter</kbd> to save.
+      Use each row's <strong>Row type</strong> to mark headers (Verse, Chorus, Bridge).
+      Use the <strong>\u2261 handle</strong> to drag a row (or a whole section when dragging a header).
+      Use <strong>Clone section</strong> on headers to append a copy at the end.
+      Press <kbd>Enter</kbd> to create a new line box after the current one.
+      <strong>Download HTML</strong> / <strong>Print / Save PDF</strong> use the same layout.
+    </p>
+    <div class="editor" id="editor"></div>
     <section class="layout-inline" id="layout-inline" aria-labelledby="layout-title">
       <div class="layout-sheet">
         <h2 id="layout-title">Layout Board (Estimated)</h2>
@@ -1063,17 +1095,6 @@ function mount() {
         </div>
       </div>
     </section>
-    <p class="hint">
-      Type lyrics in the box, then <strong>double-click above the text</strong> to add a chord and type immediately.
-      <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
-      <strong>Double-click a chord</strong> to edit it. <kbd>Escape</kbd> to cancel or <kbd>Enter</kbd> to save.
-      Use each row's <strong>Row type</strong> to mark headers (Verse, Chorus, Bridge).
-      Use the <strong>\u2261 handle</strong> to drag a row (or a whole section when dragging a header).
-      Use <strong>Clone section</strong> on headers to append a copy at the end.
-      Press <kbd>Enter</kbd> to create a new line box after the current one.
-      <strong>Download HTML</strong> / <strong>Print / Save PDF</strong> use the same layout.
-    </p>
-    <div class="editor" id="editor"></div>
   `;
 
   const configPanel = app.querySelector('#config-panel');
@@ -1126,6 +1147,11 @@ function mount() {
   `;
 
   const editor = app.querySelector('#editor');
+  const liveSectionPreview = document.createElement('aside');
+  liveSectionPreview.className = 'section-live-preview';
+  liveSectionPreview.style.display = 'none';
+  liveSectionPreview.setAttribute('aria-label', 'Live section preview');
+  let livePreviewHostRow = null;
   const selDir = app.querySelector('#sel-dir');
   selDir.value = cfg.defaultDirection;
 
@@ -1138,15 +1164,11 @@ function mount() {
       ['#btn-song-import', 'Import a single song JSON file.'],
       ['#btn-song-export-all', 'Export your full song library as one JSON file.'],
       ['#btn-song-import-all', 'Import a full song library JSON file.'],
-      ['#btn-add', 'Add a new row at the end.'],
-      ['#btn-del', 'Remove the last row.'],
       ['#btn-apply-dir', 'Apply selected text direction to all rows.'],
       ['#btn-guide', 'Open the quick visual guide.'],
       ['#btn-guide-close', 'Close the quick guide.'],
       ['#btn-layout-reset', 'Reset section order to current song order.'],
       ['#btn-config', 'Open row height and font settings.'],
-      ['#btn-export', 'Copy current document as text/JSON to clipboard.'],
-      ['#btn-import', 'Import rows from exported text/JSON.'],
       ['#btn-preview-html', 'Open a quick HTML preview in a new tab.'],
       ['#btn-export-html', 'Download current song as an HTML file.'],
       ['#btn-print-pdf', 'Open print dialog to print or save as PDF.'],
@@ -1214,6 +1236,31 @@ function mount() {
   const persistAll = () => {
     saveConfig(cfg);
     saveDoc(rows);
+  };
+
+  const getDocumentSnapshot = () => collectSnapshots(rows);
+  const snapshotToKey = (snapshot) => JSON.stringify(snapshot);
+  const updateHistoryButtons = () => {
+    return {
+      canUndo: historyPast.length > 0,
+      canRedo: historyFuture.length > 0,
+    };
+  };
+  const resetHistory = (snapshot = getDocumentSnapshot()) => {
+    historyPast = [];
+    historyFuture = [];
+    historyCurrent = snapshotToKey(snapshot);
+    updateHistoryButtons();
+  };
+  const commitHistory = () => {
+    if (suppressHistory) return;
+    const snapshot = getDocumentSnapshot();
+    const nextKey = snapshotToKey(snapshot);
+    if (nextKey === historyCurrent) return;
+    historyPast.push(JSON.parse(historyCurrent));
+    historyCurrent = nextKey;
+    historyFuture = [];
+    updateHistoryButtons();
   };
 
   let layoutOrder = [];
@@ -1301,16 +1348,6 @@ function mount() {
     return cfg.defaultDirection === 'rtl' ? 'rtl' : 'ltr';
   };
 
-  const pickColumnIndex = (heights, isRtl) => {
-    const minHeight = Math.min(...heights);
-    const minIndexes = [];
-    for (let i = 0; i < heights.length; i += 1) {
-      if (heights[i] === minHeight) minIndexes.push(i);
-    }
-    if (minIndexes.length === 0) return 0;
-    return isRtl ? minIndexes[minIndexes.length - 1] : minIndexes[0];
-  };
-
   const buildEstimatedLayout = (sections, columns, layoutDir = 'ltr') => {
     const safeColumns = Math.min(3, Math.max(1, Number(columns) || 2));
     const isRtl = layoutDir === 'rtl' && safeColumns > 1;
@@ -1329,16 +1366,32 @@ function mount() {
       s.nonHeaderRows = s.rows.filter((r) => r.kind !== 'header').length;
     }
 
-    const pages = [{ columns: Array.from({ length: safeColumns }, () => []), heights: Array(safeColumns).fill(0) }];
+    const buildPage = () => ({ columns: Array.from({ length: safeColumns }, () => []), heights: Array(safeColumns).fill(0) });
+    const pages = [buildPage()];
+    const columnOrder = isRtl
+      ? Array.from({ length: safeColumns }, (_, i) => safeColumns - 1 - i)
+      : Array.from({ length: safeColumns }, (_, i) => i);
+    let currentColumnOrderIndex = 0;
 
     for (const s of all) {
       let page = pages[pages.length - 1];
-      let colIndex = pickColumnIndex(page.heights, isRtl);
-      if (page.heights[colIndex] + s.estimatedHeight > pageHeight && Math.max(...page.heights) > 0) {
-        page = { columns: Array.from({ length: safeColumns }, () => []), heights: Array(safeColumns).fill(0) };
-        pages.push(page);
-        colIndex = isRtl ? safeColumns - 1 : 0;
+      let colIndex = columnOrder[currentColumnOrderIndex];
+
+      while (
+        page.columns[colIndex].length > 0 &&
+        page.heights[colIndex] + s.estimatedHeight > pageHeight
+      ) {
+        currentColumnOrderIndex += 1;
+        if (currentColumnOrderIndex >= columnOrder.length) {
+          page = buildPage();
+          pages.push(page);
+          currentColumnOrderIndex = 0;
+        } else {
+          page = pages[pages.length - 1];
+        }
+        colIndex = columnOrder[currentColumnOrderIndex];
       }
+
       page.columns[colIndex].push(s);
       page.heights[colIndex] += s.estimatedHeight + 10;
     }
@@ -1446,6 +1499,54 @@ function mount() {
 
   let activeSectionId = null;
 
+  const updateLiveSectionPreview = () => {
+    if (!activeSectionId) {
+      liveSectionPreview.style.display = 'none';
+      return;
+    }
+
+    const sectionRows = rows.filter((r) => r.wrap?.dataset?.sectionId === activeSectionId);
+    if (sectionRows.length === 0) {
+      liveSectionPreview.style.display = 'none';
+      return;
+    }
+
+    const hostRow = sectionRows[0];
+    if (livePreviewHostRow !== hostRow) {
+      liveSectionPreview.remove();
+      hostRow.wrap.appendChild(liveSectionPreview);
+      livePreviewHostRow = hostRow;
+    }
+
+    const dir = hostRow.wrap?.dataset?.dir === 'rtl' ? 'rtl' : 'ltr';
+    liveSectionPreview.dataset.side = dir === 'rtl' ? 'left' : 'right';
+    liveSectionPreview.setAttribute('dir', dir);
+
+    const title = document.createElement('h5');
+    title.textContent = dir === 'rtl' ? 'תצוגה מקדימה למקטע' : 'Section live preview';
+
+    const body = document.createElement('div');
+    body.className = 'section-live-preview-body';
+
+    sectionRows.slice(0, 8).forEach((r) => {
+      const line = document.createElement('div');
+      const k = normalizeKind(r.kind);
+      line.className = `section-live-row row-${k}`;
+      if (k === 'header') {
+        line.textContent = String(r.lyricsEl.value || '').trim().split(/\r?\n/)[0] || (dir === 'rtl' ? 'מקטע' : 'Section');
+      } else if (k === 'chords') {
+        const chordVals = Object.values(normalizeChordMap(r.chords || {})).filter(Boolean);
+        line.textContent = chordVals.slice(0, 8).join('   ') || String(r.lyricsEl.value || '').trim() || (dir === 'rtl' ? 'מעבר אקורדים' : 'Chord transition');
+      } else {
+        line.textContent = String(r.lyricsEl.value || '').split(/\r?\n/)[0] || '...';
+      }
+      body.appendChild(line);
+    });
+
+    liveSectionPreview.replaceChildren(title, body);
+    liveSectionPreview.style.display = 'block';
+  };
+
   const refreshSectionVisuals = () => {
     let sectionCounter = 0;
     let currentSectionId = null;
@@ -1487,12 +1588,41 @@ function mount() {
         Boolean(activeSectionId) && row.wrap.dataset.sectionId === activeSectionId
       );
     }
+
+    updateLiveSectionPreview();
   };
 
   const onRowChange = () => {
     persistAll();
     refreshSectionVisuals();
     refreshLayoutBoard();
+    commitHistory();
+  };
+
+  const applySnapshotState = (snapshot) => {
+    suppressHistory = true;
+    rebuild(snapshot, { resetHistory: false });
+    suppressHistory = false;
+  };
+
+  const undoChange = () => {
+    if (historyPast.length === 0) return;
+    const currentSnapshot = JSON.parse(historyCurrent);
+    const prev = historyPast.pop();
+    historyFuture.push(currentSnapshot);
+    historyCurrent = JSON.stringify(prev);
+    applySnapshotState(prev);
+    updateHistoryButtons();
+  };
+
+  const redoChange = () => {
+    if (historyFuture.length === 0) return;
+    const currentSnapshot = JSON.parse(historyCurrent);
+    const next = historyFuture.pop();
+    historyPast.push(currentSnapshot);
+    historyCurrent = JSON.stringify(next);
+    applySnapshotState(next);
+    updateHistoryButtons();
   };
 
   let chordsClipboard = [];
@@ -1646,6 +1776,15 @@ function mount() {
     wireInsertHandler(row);
     wireChordsHandlers(row);
     wireDragHandlers(row);
+    row.onDelete = () => {
+      if (rows.length <= 1) return;
+      const idx = rows.indexOf(row);
+      if (idx < 0) return;
+      rows.splice(idx, 1);
+      row.dispose?.();
+      row.wrap.remove();
+      onRowChange();
+    };
     row.lyricsEl.addEventListener('focus', () => {
       activeSectionId = row.wrap.dataset.sectionId || null;
       refreshSectionVisuals();
@@ -1677,7 +1816,7 @@ function mount() {
     newRow.lyricsEl.focus();
   };
 
-  const rebuild = (data) => {
+  const rebuild = (data, options = {}) => {
     for (const r of rows) {
       r.dispose?.();
     }
@@ -1691,34 +1830,37 @@ function mount() {
     updatePasteButtons();
     persistAll();
     refreshLayoutBoard();
+    if (options.resetHistory) {
+      resetHistory(collectSnapshots(rows));
+    }
   };
 
   applyConfigToRoot(cfg, root, document.body);
   bindConfigInputs();
-  rebuild(loadDoc());
+  rebuild(loadDoc(), { resetHistory: true });
+
+  editor.addEventListener('focusin', () => {
+    refreshSectionVisuals();
+  });
+
+  window.addEventListener('keydown', (e) => {
+    const isMod = e.ctrlKey || e.metaKey;
+    if (!isMod || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undoChange();
+      return;
+    }
+    if (key === 'y' || (key === 'z' && e.shiftKey)) {
+      e.preventDefault();
+      redoChange();
+    }
+  });
 
   selDir.addEventListener('change', () => {
     cfg.defaultDirection = selDir.value;
     saveConfig(cfg);
-  });
-
-  app.querySelector('#btn-add').addEventListener('click', () => {
-    const d = { lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' };
-    const row = createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule);
-    rows.push(row);
-    wireRow(row);
-    updatePasteButtons();
-    onRowChange();
-    row.lyricsEl.focus();
-    layoutSchedule(row);
-  });
-
-  app.querySelector('#btn-del').addEventListener('click', () => {
-    if (rows.length <= 1) return;
-    const last = rows.pop();
-    last.dispose?.();
-    last.wrap.remove();
-    onRowChange();
   });
 
   app.querySelector('#btn-apply-dir').addEventListener('click', () => {
@@ -1744,29 +1886,6 @@ function mount() {
       saveConfig(cfg);
       rows.forEach((r) => layoutSchedule(r));
     });
-  });
-
-  app.querySelector('#btn-export').addEventListener('click', async () => {
-    const text = exportText(rows);
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      prompt('Copy:', text);
-      return;
-    }
-    const b = app.querySelector('#btn-export');
-    const prev = b.textContent;
-    b.textContent = 'Copied!';
-    setTimeout(() => {
-      b.textContent = prev;
-    }, 1500);
-  });
-
-  app.querySelector('#btn-import').addEventListener('click', () => {
-    const text = prompt('Paste exported text (v2 blocks or legacy chord/lyric pairs):');
-    if (text == null) return;
-    const pairs = importText(text, cfg.defaultDirection);
-    rebuild(pairs);
   });
 
   app.querySelector('#btn-preview-html').addEventListener('click', () => {
@@ -1827,7 +1946,7 @@ function mount() {
       setCurrentSongName(null);
       layoutOrder = [];
       selLayoutCols.value = DEFAULT_LAYOUT_COLS;
-      rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }]);
+      rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }], { resetHistory: true });
       selSong.value = '';
       updateSaveAttention();
       return;
@@ -1837,7 +1956,7 @@ function mount() {
     if (data) {
       setCurrentSongName(name);
       layoutOrder = [];
-      rebuild(data);
+      rebuild(data, { resetHistory: true });
       selSong.value = name;
       updateSaveAttention();
     }
@@ -1922,7 +2041,7 @@ function mount() {
     layoutOrder = [];
     selLayoutCols.value = DEFAULT_LAYOUT_COLS;
     updateSongList();
-    rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }]);
+    rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }], { resetHistory: true });
   });
 
   app.querySelector('#btn-song-export').addEventListener('click', () => {
@@ -1935,6 +2054,7 @@ function mount() {
         chords: normalizeChordMap(s.chords),
         dir: s.dir,
         kind: s.kind,
+        sectionEnd: s.sectionEnd === true,
       })),
     };
     downloadJsonFile(payload, `${name.replace(/\W+/g, '-')}.json`);

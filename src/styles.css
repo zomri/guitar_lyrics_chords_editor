@@ -40,26 +40,49 @@ body {
 }
 
 .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.55rem;
   margin-bottom: 1rem;
-  padding-bottom: 1rem;
+  padding: 0.85rem 0 0.9rem;
   border-bottom: 1px solid var(--border);
+  background: rgba(26, 27, 30, 0.96);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .toolbar h1 {
   margin: 0;
-  font-size: 1.125rem;
-  font-weight: 600;
-  flex: 1 1 100%;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 0.75rem;
+  align-items: center;
+}
+
+.toolbar-row-song,
+.toolbar-row-output {
+  padding: 0.1rem 0;
 }
 
 .toolbar-group {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.42rem;
   align-items: center;
 }
 
@@ -72,8 +95,8 @@ button,
 select {
   font: inherit;
   font-size: 0.875rem;
-  padding: 0.35rem 0.65rem;
-  border-radius: 6px;
+  padding: 0.42rem 0.72rem;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -99,6 +122,7 @@ button.primary:hover {
   background: #d0ebff;
   border-color: #74c0fc;
   color: #0b4f87;
+  white-space: nowrap;
 }
 
 #btn-guide:hover {
@@ -115,6 +139,13 @@ button.attention-save {
 button.attention-save:hover {
   background: #e03131;
   border-color: #c92a2a;
+}
+
+@media (max-width: 900px) {
+  .toolbar-top {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .config-panel {
@@ -403,6 +434,9 @@ button.attention-save:hover {
   flex-direction: column;
   border-left: 3px solid var(--border);
   padding-left: 0.5rem;
+  width: 85%;
+  margin-left: auto;
+  margin-right: auto;
   margin-bottom: 0.75rem;
   position: relative;
 }
@@ -505,6 +539,17 @@ button.attention-save:hover {
   cursor: default;
 }
 
+.row-delete-btn {
+  color: #ffb4b4;
+  border-color: #7f3030;
+}
+
+.row-delete-btn:hover:not(:disabled) {
+  color: #ffd9d9;
+  border-color: #c94b4b;
+  background: rgba(201, 75, 75, 0.12);
+}
+
 .row-section-tag {
   margin-left: auto;
   font-size: 0.68rem;
@@ -526,6 +571,61 @@ button.attention-save:hover {
   background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
   margin: 0.5rem 0;
   margin-left: 0.5rem;
+}
+
+.section-live-preview {
+  position: absolute;
+  top: 0;
+  width: min(29vw, 320px);
+  border: 1px solid #3f434c;
+  border-radius: 8px;
+  background: #1b1d23;
+  padding: 0.45rem;
+  z-index: 3;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.section-live-preview[data-side='right'] {
+  left: calc(100% + 12px);
+}
+
+.section-live-preview[data-side='left'] {
+  right: calc(100% + 12px);
+}
+
+.section-live-preview h5 {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  color: #9fb8d4;
+}
+
+.section-live-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.24rem;
+}
+
+.section-live-row {
+  font-size: 0.72rem;
+  color: #d6d9df;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.section-live-row.row-header {
+  font-weight: 700;
+  color: #8fc6ff;
+}
+
+.section-live-row.row-chords {
+  color: #f0b58e;
+}
+
+@media (max-width: 1200px) {
+  .section-live-preview {
+    display: none !important;
+  }
 }
 
 .row-insert-between {
@@ -551,8 +651,12 @@ button.attention-save:hover {
   border-color: #4dabf7;
 }
 
-.stanza-row.section-child-row {
-  margin-left: 1rem;
+.stanza-row[data-dir='ltr'].section-child-row {
+  transform: translateX(1rem);
+}
+
+.stanza-row[data-dir='rtl'].section-child-row {
+  transform: translateX(-1rem);
 }
 
 .stanza-row.section-active {
