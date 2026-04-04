@@ -287,17 +287,31 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
 
   const rowMeta = document.createElement('div');
   rowMeta.className = 'row-meta';
-  const kindLabel = document.createElement('label');
-  kindLabel.className = 'row-kind-label';
-  kindLabel.textContent = 'Row type';
-  const kindSelect = document.createElement('select');
-  kindSelect.className = 'row-kind-select';
-  kindSelect.innerHTML = `
-    <option value="line">Lyrics + Chords</option>
-    <option value="chords">Chords only (transition)</option>
-    <option value="header">Header (Verse / Chorus)</option>
-  `;
-  kindSelect.value = wrap.dataset.kind;
+  const kindButtons = document.createElement('div');
+  kindButtons.className = 'row-kind-buttons';
+  const btnKindHeader = document.createElement('button');
+  btnKindHeader.type = 'button';
+  btnKindHeader.className = 'row-kind-btn';
+  btnKindHeader.dataset.kind = 'header';
+  btnKindHeader.textContent = 'Section';
+  const btnKindLine = document.createElement('button');
+  btnKindLine.type = 'button';
+  btnKindLine.className = 'row-kind-btn';
+  btnKindLine.dataset.kind = 'line';
+  btnKindLine.textContent = 'Lyrics&Chords';
+  const btnKindChords = document.createElement('button');
+  btnKindChords.type = 'button';
+  btnKindChords.className = 'row-kind-btn';
+  btnKindChords.dataset.kind = 'chords';
+  btnKindChords.textContent = 'Chords only';
+  kindButtons.appendChild(btnKindHeader);
+  kindButtons.appendChild(btnKindLine);
+  kindButtons.appendChild(btnKindChords);
+
+  const sectionPresetSelect = document.createElement('select');
+  sectionPresetSelect.className = 'row-section-preset';
+  sectionPresetSelect.title = 'Pick a common section label';
+  sectionPresetSelect.style.display = 'none';
 
   const dragHandle = document.createElement('button');
   dragHandle.type = 'button';
@@ -307,8 +321,8 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   dragHandle.draggable = true;
 
   rowMeta.appendChild(dragHandle);
-  rowMeta.appendChild(kindLabel);
-  rowMeta.appendChild(kindSelect);
+  rowMeta.appendChild(kindButtons);
+  rowMeta.appendChild(sectionPresetSelect);
 
   const rowSelectCb = document.createElement('input');
   rowSelectCb.type = 'checkbox';
@@ -437,6 +451,79 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     _sectionEnd: data.sectionEnd ?? false,
   };
 
+  const sectionKinds = [
+    { key: 'verse', ltr: 'Verse', rtl: 'בית', aliases: ['Verse', 'בית'] },
+    { key: 'chorus', ltr: 'Chorus', rtl: 'פזמון', aliases: ['Chorus', 'פזמון'] },
+    { key: 'bridge', ltr: 'Bridge', rtl: 'גשר', aliases: ['Bridge', 'גשר'] },
+    { key: 'pre-chorus', ltr: 'Pre-Chorus', rtl: 'קדם-פזמון', aliases: ['Pre-Chorus', 'קדם-פזמון'] },
+    { key: 'outro', ltr: 'Outro/Coda', rtl: 'סיום/קודה', aliases: ['Outro/Coda', 'סיום/קודה'] },
+  ];
+  const normalizeSectionName = (text) => String(text || '').trim().toLowerCase();
+  const parseKnownSection = (text) => {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return null;
+    for (const def of sectionKinds) {
+      for (const alias of def.aliases) {
+        const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const m = new RegExp(`^${escaped}(?:\\s+(\\d+))?$`, 'i').exec(trimmed);
+        if (!m) continue;
+        return { key: def.key, num: m[1] ? Number(m[1]) : 1 };
+      }
+    }
+    return null;
+  };
+  const collectSectionSuggestions = () => {
+    const maxByBase = new Map();
+    const headerInputs = editor.querySelectorAll('.stanza-row[data-kind="header"] .lyric-input');
+    headerInputs.forEach((el) => {
+      if (!(el instanceof HTMLTextAreaElement)) return;
+      const firstLine = String(el.value || '').trim().split(/\r?\n/)[0] || '';
+      const parsed = parseKnownSection(firstLine);
+      if (!parsed) return;
+      const prev = maxByBase.get(parsed.key) || 0;
+      maxByBase.set(parsed.key, Math.max(prev, parsed.num));
+    });
+
+    const isRtl = wrap.dataset.dir === 'rtl';
+    return sectionKinds.map((def) => {
+      const label = isRtl ? def.rtl : def.ltr;
+      const maxSeen = maxByBase.get(def.key) || 0;
+      return maxSeen > 0 ? `${label} ${maxSeen + 1}` : label;
+    });
+  };
+  const refreshSectionPresetOptions = () => {
+    const currentText = String(lyricsEl.value || '').trim().split(/\r?\n/)[0] || '';
+    const suggestions = collectSectionSuggestions();
+    sectionPresetSelect.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = wrap.dataset.dir === 'rtl' ? 'שם מקטע...' : 'Section label...';
+    placeholder.selected = true;
+    sectionPresetSelect.appendChild(placeholder);
+
+    const seen = new Set();
+    const currentNorm = normalizeSectionName(currentText);
+    if (currentNorm) {
+      seen.add(currentNorm);
+      const own = document.createElement('option');
+      own.value = currentText;
+      own.textContent = currentText;
+      sectionPresetSelect.appendChild(own);
+    }
+
+    suggestions.forEach((s) => {
+      const n = normalizeSectionName(s);
+      if (!n || seen.has(n)) return;
+      seen.add(n);
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sectionPresetSelect.appendChild(opt);
+    });
+  };
+  row.refreshSectionPresetOptions = refreshSectionPresetOptions;
+
   Object.defineProperty(row, 'dir', {
     get: () => wrap.dataset.dir,
     set: (v) => {
@@ -451,7 +538,9 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     set: (v) => {
       const next = normalizeKind(v);
       wrap.dataset.kind = next;
-      kindSelect.value = next;
+      [btnKindHeader, btnKindLine, btnKindChords].forEach((b) => {
+        b.classList.toggle('active', b.dataset.kind === next);
+      });
       onChange();
       layoutSchedule(row);
     },
@@ -459,12 +548,17 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
 
   const syncRowKindUI = () => {
     const isHeader = row.kind === 'header';
+    [btnKindHeader, btnKindLine, btnKindChords].forEach((b) => {
+      b.classList.toggle('active', b.dataset.kind === row.kind);
+    });
     if (isHeader) {
       lyricsEl.placeholder = 'Section header (e.g., Verse 1 / Chorus)';
       rowSelectCb.style.display = 'none';
       btnCopyChords.style.display = 'none';
       btnPasteChords.style.display = 'none';
       btnEndSection.style.display = 'none';
+      sectionPresetSelect.style.display = 'block';
+      refreshSectionPresetOptions();
       sectionSelectCb.style.display = 'block';
       btnCopySection.style.display = 'block';
       btnCloneSection.style.display = 'block';
@@ -475,6 +569,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnCopyChords.style.display = 'block';
       btnPasteChords.style.display = 'block';
       btnEndSection.style.display = 'block';
+      sectionPresetSelect.style.display = 'none';
       sectionSelectCb.style.display = 'none';
       btnCopySection.style.display = 'none';
       btnCloneSection.style.display = 'none';
@@ -485,6 +580,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnCopyChords.style.display = 'block';
       btnPasteChords.style.display = 'block';
       btnEndSection.style.display = 'block';
+      sectionPresetSelect.style.display = 'none';
       sectionSelectCb.style.display = 'none';
       btnCopySection.style.display = 'none';
       btnCloneSection.style.display = 'none';
@@ -496,9 +592,20 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     btnEndSection.classList.toggle('active', isEnd);
     sectionDivider.style.display = isEnd ? 'block' : 'none';
   };
-  kindSelect.addEventListener('change', () => {
-    row.kind = kindSelect.value;
-    syncRowKindUI();
+  [btnKindHeader, btnKindLine, btnKindChords].forEach((b) => {
+    b.addEventListener('click', () => {
+      row.kind = b.dataset.kind;
+      syncRowKindUI();
+    });
+  });
+  sectionPresetSelect.addEventListener('change', () => {
+    const next = sectionPresetSelect.value;
+    if (!next) return;
+    lyricsEl.value = next;
+    row._lastValue = lyricsEl.value;
+    onChange();
+    layoutSchedule(row);
+    sectionPresetSelect.value = '';
   });
   btnEndSection.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -937,6 +1044,25 @@ function mount() {
         </div>
       </div>
     </div>
+    <section class="layout-inline" id="layout-inline" aria-labelledby="layout-title">
+      <div class="layout-sheet">
+        <h2 id="layout-title">Layout Board (Estimated)</h2>
+        <p class="guide-sub">Estimate section size and page usage before export.</p>
+        <div class="layout-toolbar">
+          <label for="sel-layout-cols">Columns</label>
+          <select id="sel-layout-cols">
+            <option value="1">1</option>
+            <option value="2" selected>2</option>
+            <option value="3">3</option>
+          </select>
+          <button type="button" id="btn-layout-reset">Reset order</button>
+          <span class="layout-stats" id="layout-stats"></span>
+        </div>
+        <div class="layout-body">
+          <section class="layout-preview" id="layout-preview-pages"></section>
+        </div>
+      </div>
+    </section>
     <p class="hint">
       Type lyrics in the box, then <strong>double-click above the text</strong> to add a chord and type immediately.
       <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
@@ -954,6 +1080,11 @@ function mount() {
   const guideModal = app.querySelector('#guide-modal');
   const btnGuide = app.querySelector('#btn-guide');
   const btnGuideClose = app.querySelector('#btn-guide-close');
+  const btnLayoutReset = app.querySelector('#btn-layout-reset');
+  const selLayoutCols = app.querySelector('#sel-layout-cols');
+  const layoutStats = app.querySelector('#layout-stats');
+  const layoutPreviewPages = app.querySelector('#layout-preview-pages');
+  const DEFAULT_LAYOUT_COLS = '2';
   const btnSongSave = app.querySelector('#btn-song-save');
   configPanel.innerHTML = `
     <fieldset>
@@ -1012,6 +1143,7 @@ function mount() {
       ['#btn-apply-dir', 'Apply selected text direction to all rows.'],
       ['#btn-guide', 'Open the quick visual guide.'],
       ['#btn-guide-close', 'Close the quick guide.'],
+      ['#btn-layout-reset', 'Reset section order to current song order.'],
       ['#btn-config', 'Open row height and font settings.'],
       ['#btn-export', 'Copy current document as text/JSON to clipboard.'],
       ['#btn-import', 'Import rows from exported text/JSON.'],
@@ -1084,6 +1216,234 @@ function mount() {
     saveDoc(rows);
   };
 
+  let layoutOrder = [];
+
+  const buildSectionsFromRows = () => {
+    const sections = [];
+    let current = null;
+    let unnamedCount = 0;
+    const pushCurrent = () => {
+      if (current) sections.push(current);
+      current = null;
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const rowSnap = {
+        kind: normalizeKind(r.wrap.dataset.kind),
+        lyrics: r.lyricsEl.value,
+        chords: normalizeChordMap(r.chords),
+        sectionEnd: r._sectionEnd === true,
+      };
+
+      if (rowSnap.kind === 'header') {
+        pushCurrent();
+        const name = String(rowSnap.lyrics || '').trim().split(/\r?\n/)[0] || `Section ${sections.length + 1}`;
+        current = {
+          id: `h:${i}`,
+          title: name,
+          startIndex: i,
+          rows: [rowSnap],
+        };
+        continue;
+      }
+
+      if (!current) {
+        unnamedCount += 1;
+        current = {
+          id: `u:${i}:${unnamedCount}`,
+          title: `Section ${sections.length + 1}`,
+          startIndex: i,
+          rows: [],
+        };
+      }
+      current.rows.push(rowSnap);
+      if (rowSnap.sectionEnd) {
+        pushCurrent();
+      }
+    }
+    pushCurrent();
+    return sections;
+  };
+
+  const estimateRowHeight = (rowSnap, columnWidth) => {
+    if (rowSnap.kind === 'header') {
+      return Math.max(34, cfg.lyricFontSize * 2.1);
+    }
+    if (rowSnap.kind === 'chords') {
+      const chordCount =
+        Object.keys(normalizeChordMap(rowSnap.chords)).length ||
+        String(rowSnap.lyrics || '').trim().split(/\s+/).filter(Boolean).length ||
+        1;
+      const perLine = Math.max(4, Math.floor((columnWidth - 40) / 58));
+      const lines = Math.max(1, Math.ceil(chordCount / perLine));
+      return 16 + lines * (cfg.chordFontSize * 1.5) + 18;
+    }
+    const text = String(rowSnap.lyrics || '');
+    const logicalLines = text.split(/\r?\n/);
+    const avgChar = cfg.useMonospace ? cfg.lyricFontSize * 0.62 : cfg.lyricFontSize * 0.55;
+    const capacity = Math.max(8, Math.floor((columnWidth - 34) / avgChar));
+    let visualLines = 0;
+    for (const ln of logicalLines) {
+      visualLines += Math.max(1, Math.ceil(Math.max(1, ln.length) / capacity));
+    }
+    return cfg.chordMinHeight + visualLines * (cfg.lyricFontSize * 1.35) + 16;
+  };
+
+  const inferLayoutDirection = () => {
+    const firstMeaningful = rows.find((r) => {
+      const hasLyrics = String(r.lyricsEl?.value || '').trim().length > 0;
+      const hasChords = Object.keys(normalizeChordMap(r.chords || {})).length > 0;
+      return hasLyrics || hasChords;
+    });
+    const rowDir = firstMeaningful?.wrap?.dataset?.dir;
+    if (rowDir === 'rtl' || rowDir === 'ltr') return rowDir;
+    return cfg.defaultDirection === 'rtl' ? 'rtl' : 'ltr';
+  };
+
+  const pickColumnIndex = (heights, isRtl) => {
+    const minHeight = Math.min(...heights);
+    const minIndexes = [];
+    for (let i = 0; i < heights.length; i += 1) {
+      if (heights[i] === minHeight) minIndexes.push(i);
+    }
+    if (minIndexes.length === 0) return 0;
+    return isRtl ? minIndexes[minIndexes.length - 1] : minIndexes[0];
+  };
+
+  const buildEstimatedLayout = (sections, columns, layoutDir = 'ltr') => {
+    const safeColumns = Math.min(3, Math.max(1, Number(columns) || 2));
+    const isRtl = layoutDir === 'rtl' && safeColumns > 1;
+    const pageHeight = 980;
+    const columnWidth = Math.floor((780 - (safeColumns - 1) * 14) / safeColumns);
+    const ordered = layoutOrder
+      .map((id) => sections.find((s) => s.id === id))
+      .filter(Boolean);
+    const rest = sections.filter((s) => !layoutOrder.includes(s.id));
+    const all = [...ordered, ...rest];
+
+    layoutOrder = all.map((s) => s.id);
+
+    for (const s of all) {
+      s.estimatedHeight = s.rows.reduce((acc, r) => acc + estimateRowHeight(r, columnWidth), 12) + 14;
+      s.nonHeaderRows = s.rows.filter((r) => r.kind !== 'header').length;
+    }
+
+    const pages = [{ columns: Array.from({ length: safeColumns }, () => []), heights: Array(safeColumns).fill(0) }];
+
+    for (const s of all) {
+      let page = pages[pages.length - 1];
+      let colIndex = pickColumnIndex(page.heights, isRtl);
+      if (page.heights[colIndex] + s.estimatedHeight > pageHeight && Math.max(...page.heights) > 0) {
+        page = { columns: Array.from({ length: safeColumns }, () => []), heights: Array(safeColumns).fill(0) };
+        pages.push(page);
+        colIndex = isRtl ? safeColumns - 1 : 0;
+      }
+      page.columns[colIndex].push(s);
+      page.heights[colIndex] += s.estimatedHeight + 10;
+    }
+
+    return { pages, sections: all, columns: safeColumns };
+  };
+
+  const getLayoutOptions = () => {
+    const sections = buildSectionsFromRows();
+    const model = buildEstimatedLayout(sections, selLayoutCols.value, inferLayoutDirection());
+    return {
+      columns: model.columns,
+      order: [...layoutOrder],
+      pages: model.pages.map((p) => ({
+        columns: p.columns.map((col) => col.map((s) => s.id)),
+      })),
+    };
+  };
+
+  const refreshLayoutBoard = () => {
+    const sections = buildSectionsFromRows();
+    const { pages, sections: orderedSections, columns } = buildEstimatedLayout(
+      sections,
+      selLayoutCols.value,
+      inferLayoutDirection()
+    );
+
+    layoutStats.textContent = `${orderedSections.length} sections · ${pages.length} pages · drag cards to reorder`;
+
+    layoutPreviewPages.innerHTML = pages
+      .map((p, pi) => {
+        const colsHtml = p.columns
+          .map(
+            (col) =>
+              `<div class="layout-col">${col
+                .map(
+                  (s) =>
+                    `<article class="layout-card" draggable="true" data-section-id="${s.id}" title="Drag to reorder. Click to locate in editor." style="height:${Math.max(42, Math.round(s.estimatedHeight * 0.24))}px">
+                      <strong>${s.title}</strong>
+                      <span>${s.nonHeaderRows} lines</span>
+                    </article>`
+                )
+                .join('')}</div>`
+          )
+          .join('');
+        return `<section class="layout-page"><h4>Page ${pi + 1}</h4><div class="layout-page-grid cols-${columns}">${colsHtml}</div></section>`;
+      })
+      .join('');
+  };
+
+  btnLayoutReset.addEventListener('click', () => {
+    layoutOrder = [];
+    refreshLayoutBoard();
+  });
+  selLayoutCols.addEventListener('change', () => refreshLayoutBoard());
+
+  let layoutDragId = null;
+  layoutPreviewPages.addEventListener('click', (e) => {
+    const card = e.target.closest('.layout-card[data-section-id]');
+    if (!card) return;
+    const id = card.dataset.sectionId;
+    const sec = buildSectionsFromRows().find((s) => s.id === id);
+    if (!sec) return;
+    const target = rows[sec.startIndex];
+    target?.lyricsEl?.focus();
+    target?.wrap?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  });
+  layoutPreviewPages.addEventListener('dragstart', (e) => {
+    const item = e.target.closest('.layout-card[data-section-id]');
+    if (!item) return;
+    layoutDragId = item.dataset.sectionId;
+    item.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', layoutDragId);
+  });
+  layoutPreviewPages.addEventListener('dragend', () => {
+    layoutDragId = null;
+    layoutPreviewPages.querySelectorAll('.layout-card.dragging').forEach((el) => el.classList.remove('dragging'));
+    layoutPreviewPages.querySelectorAll('.layout-card.drop-before').forEach((el) => el.classList.remove('drop-before'));
+  });
+  layoutPreviewPages.addEventListener('dragover', (e) => {
+    if (!layoutDragId) return;
+    e.preventDefault();
+    const item = e.target.closest('.layout-card[data-section-id]');
+    if (!item || item.dataset.sectionId === layoutDragId) return;
+    layoutPreviewPages.querySelectorAll('.layout-card.drop-before').forEach((el) => el.classList.remove('drop-before'));
+    item.classList.add('drop-before');
+  });
+  layoutPreviewPages.addEventListener('drop', (e) => {
+    if (!layoutDragId) return;
+    e.preventDefault();
+    const item = e.target.closest('.layout-card[data-section-id]');
+    if (!item) return;
+    const targetId = item.dataset.sectionId;
+    if (targetId === layoutDragId) return;
+    const from = layoutOrder.indexOf(layoutDragId);
+    const to = layoutOrder.indexOf(targetId);
+    if (from < 0 || to < 0) return;
+    const copy = [...layoutOrder];
+    const [moved] = copy.splice(from, 1);
+    copy.splice(to, 0, moved);
+    layoutOrder = copy;
+    refreshLayoutBoard();
+  });
+
   let activeSectionId = null;
 
   const refreshSectionVisuals = () => {
@@ -1095,6 +1455,7 @@ function mount() {
     for (const row of rows) {
       const isHeader = row.kind === 'header';
       const headerText = String(row.lyricsEl?.value || '').trim().split(/\r?\n/)[0] || '';
+      row.refreshSectionPresetOptions?.();
 
       if (isHeader || !openSection) {
         sectionCounter += 1;
@@ -1131,6 +1492,7 @@ function mount() {
   const onRowChange = () => {
     persistAll();
     refreshSectionVisuals();
+    refreshLayoutBoard();
   };
 
   let chordsClipboard = [];
@@ -1300,7 +1662,7 @@ function mount() {
       lyrics: '',
       chords: {},
       dir: afterRow?.wrap?.dataset?.dir || cfg.defaultDirection,
-      kind: normalizeKind(afterRow?.wrap?.dataset?.kind),
+      kind: 'line',
     };
     const next = afterRow?.wrap?.nextSibling ?? null;
     const newRow = createRow(editor, d, () => cfg, onRowChange, next, layoutSchedule);
@@ -1328,6 +1690,7 @@ function mount() {
     refreshSectionVisuals();
     updatePasteButtons();
     persistAll();
+    refreshLayoutBoard();
   };
 
   applyConfigToRoot(cfg, root, document.body);
@@ -1410,7 +1773,7 @@ function mount() {
     const current = getCurrentSongName();
     const title = current ? String(current) : 'Lyrics & chords';
     const snapshots = collectSnapshots(rows);
-    const html = buildPublishDocument(snapshots, cfg, { title });
+    const html = buildPublishDocument(snapshots, cfg, { title, layout: getLayoutOptions() });
     openPreviewWindow(html);
   });
 
@@ -1424,7 +1787,7 @@ function mount() {
     const title = publishTitle();
     if (title === null) return;
     const snapshots = collectSnapshots(rows);
-    const html = buildPublishDocument(snapshots, cfg, { title });
+    const html = buildPublishDocument(snapshots, cfg, { title, layout: getLayoutOptions() });
     downloadTextFile(html, safeHtmlFilename(title));
     const b = app.querySelector('#btn-export-html');
     const prev = b.textContent;
@@ -1438,7 +1801,7 @@ function mount() {
     const title = publishTitle();
     if (title === null) return;
     const snapshots = collectSnapshots(rows);
-    const html = buildPublishDocument(snapshots, cfg, { title });
+    const html = buildPublishDocument(snapshots, cfg, { title, layout: getLayoutOptions() });
     openPrintWindow(html);
   });
 
@@ -1462,6 +1825,8 @@ function mount() {
   const switchSong = (name) => {
     if (!name) {
       setCurrentSongName(null);
+      layoutOrder = [];
+      selLayoutCols.value = DEFAULT_LAYOUT_COLS;
       rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }]);
       selSong.value = '';
       updateSaveAttention();
@@ -1471,6 +1836,7 @@ function mount() {
     const data = loadSong(name);
     if (data) {
       setCurrentSongName(name);
+      layoutOrder = [];
       rebuild(data);
       selSong.value = name;
       updateSaveAttention();
@@ -1553,6 +1919,8 @@ function mount() {
     saveSongList(list.filter((n) => n !== name));
     deleteSong(name);
     setCurrentSongName(null);
+    layoutOrder = [];
+    selLayoutCols.value = DEFAULT_LAYOUT_COLS;
     updateSongList();
     rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }]);
   });
@@ -1692,6 +2060,7 @@ function mount() {
 
   updateSongList();
   updateSaveAttention();
+  refreshLayoutBoard();
 }
 
 mount();

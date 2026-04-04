@@ -69,6 +69,64 @@ function renderChordsOnly(chords, fallbackText, cfg) {
   return `<div class="chord-progression">${sorted.join('')}</div>`;
 }
 
+function renderRowBlock(row, cfg) {
+  const lyricDir = row.dir === 'rtl' ? 'rtl' : 'ltr';
+  if (row.kind === 'header') {
+    const inner = renderHeaderLine(row.lyrics ?? '', cfg);
+    return `<section class="block header-block" dir="${lyricDir}">${inner}</section>`;
+  }
+  if (row.kind === 'chords') {
+    const inner = renderChordsOnly(row.chords ?? {}, row.lyrics ?? '', cfg);
+    return `<section class="block chords-block" dir="${lyricDir}">${inner}</section>`;
+  }
+  const inner = renderLyricsWithChords(row.lyrics ?? '', row.chords ?? {}, cfg);
+  return `<section class="block" dir="${lyricDir}">${inner}</section>`;
+}
+
+function buildSectionsFromSnapshots(snapshots) {
+  const sections = [];
+  let current = null;
+  let unnamedCount = 0;
+
+  const pushCurrent = () => {
+    if (current) sections.push(current);
+    current = null;
+  };
+
+  for (let i = 0; i < snapshots.length; i += 1) {
+    const row = snapshots[i] || {};
+    const kind = row.kind === 'header' || row.kind === 'chords' ? row.kind : 'line';
+    const sectionEnd = row.sectionEnd === true;
+    const safeRow = { ...row, kind, sectionEnd };
+
+    if (kind === 'header') {
+      pushCurrent();
+      const name = String(row.lyrics || '').trim().split(/\r?\n/)[0] || `Section ${sections.length + 1}`;
+      current = {
+        id: `h:${i}`,
+        title: name,
+        rows: [safeRow],
+      };
+      continue;
+    }
+
+    if (!current) {
+      unnamedCount += 1;
+      current = {
+        id: `u:${i}:${unnamedCount}`,
+        title: `Section ${sections.length + 1}`,
+        rows: [],
+      };
+    }
+    current.rows.push(safeRow);
+    if (sectionEnd) {
+      pushCurrent();
+    }
+  }
+  pushCurrent();
+  return sections;
+}
+
 /**
  * @param {{ lyrics: string; chords: Record<string, string>; dir: string; kind?: string }[]} snapshots
  * @param {{ chordMinHeight: number; lyricMinHeight: number; chordFontSize: number; lyricFontSize: number; useMonospace: boolean }} cfg
@@ -81,21 +139,62 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
   const titleClass = isHebrewTitle ? 'title-rtl' : 'title-ltr';
   const titleDir = isHebrewTitle ? 'rtl' : 'ltr';
   const fontFamily = cfg.useMonospace ? monoStack() : systemStack();
-  const blocks = snapshots
-    .map((row) => {
-      const lyricDir = row.dir === 'rtl' ? 'rtl' : 'ltr';
-      if (row.kind === 'header') {
-        const inner = renderHeaderLine(row.lyrics ?? '', cfg);
-        return `<section class="block header-block" dir="${lyricDir}">${inner}</section>`;
+  const layoutCols = Math.min(3, Math.max(1, Number(options?.layout?.columns) || 1));
+  const layoutOrder = Array.isArray(options?.layout?.order) ? options.layout.order : [];
+  const layoutPages = Array.isArray(options?.layout?.pages) ? options.layout.pages : null;
+  const sections = buildSectionsFromSnapshots(Array.isArray(snapshots) ? snapshots : []);
+  const sectionById = new Map(sections.map((s) => [s.id, s]));
+  const orderedSections = [
+    ...layoutOrder.map((id) => sections.find((s) => s.id === id)).filter(Boolean),
+    ...sections.filter((s) => !layoutOrder.includes(s.id)),
+  ];
+
+  const blocks = (() => {
+    if (layoutCols <= 1) {
+      return orderedSections
+        .map((s) => `<section class="layout-section">${s.rows.map((r) => renderRowBlock(r, cfg)).join('')}</section>`)
+        .join('\n');
+    }
+
+    if (layoutPages && layoutPages.length > 0) {
+      const used = new Set();
+      const pagesHtml = layoutPages
+        .map((page) => {
+          const cols = Array.isArray(page?.columns) ? page.columns : [];
+          const colsHtml = cols
+            .slice(0, layoutCols)
+            .map((col) => {
+              const ids = Array.isArray(col) ? col : [];
+              const items = ids
+                .map((id) => sectionById.get(id))
+                .filter(Boolean)
+                .map((s) => {
+                  used.add(s.id);
+                  return `<section class="layout-section">${s.rows.map((r) => renderRowBlock(r, cfg)).join('')}</section>`;
+                })
+                .join('');
+              return `<div class="layout-col">${items}</div>`;
+            })
+            .join('');
+          return `<section class="layout-page"><div class="layout-columns cols-${layoutCols}">${colsHtml}</div></section>`;
+        })
+        .join('');
+
+      const leftovers = orderedSections
+        .filter((s) => !used.has(s.id))
+        .map((s) => `<section class="layout-section">${s.rows.map((r) => renderRowBlock(r, cfg)).join('')}</section>`)
+        .join('');
+
+      if (leftovers) {
+        return `${pagesHtml}<section class="layout-page"><div class="layout-columns cols-${layoutCols}"><div class="layout-col">${leftovers}</div></div></section>`;
       }
-      if (row.kind === 'chords') {
-        const inner = renderChordsOnly(row.chords ?? {}, row.lyrics ?? '', cfg);
-        return `<section class="block chords-block" dir="${lyricDir}">${inner}</section>`;
-      }
-      const inner = renderLyricsWithChords(row.lyrics ?? '', row.chords ?? {}, cfg);
-      return `<section class="block" dir="${lyricDir}">${inner}</section>`;
-    })
-    .join('\n');
+      return pagesHtml;
+    }
+
+    return `<div class="layout-grid cols-${layoutCols}">${orderedSections
+      .map((s) => `<section class="layout-section">${s.rows.map((r) => renderRowBlock(r, cfg)).join('')}</section>`)
+      .join('')}</div>`;
+  })();
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -132,6 +231,38 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
     .block {
       margin-bottom: 0.75rem;
       page-break-inside: avoid;
+    }
+    .layout-grid {
+      display: grid;
+      gap: 0.7rem 1rem;
+      align-items: start;
+      direction: ltr;
+    }
+    .layout-columns {
+      display: grid;
+      gap: 0.7rem 1rem;
+      align-items: start;
+      direction: ltr;
+    }
+    .layout-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+    .layout-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .layout-columns.cols-2 { grid-template-columns: 1fr 1fr; }
+    .layout-columns.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+    .layout-page {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      margin-bottom: 0.5rem;
+    }
+    .layout-col {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .layout-section {
+      page-break-inside: avoid;
+      break-inside: avoid;
+      padding: 0;
+      background: transparent;
     }
     .header-block {
       margin-top: 0.25rem;
@@ -209,6 +340,12 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
         border-bottom-color: #93c5fd;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+      }
+      .layout-grid {
+        break-inside: auto;
+      }
+      .layout-section {
+        break-inside: avoid;
       }
     }
     @page { margin: 14mm; }
