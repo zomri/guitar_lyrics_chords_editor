@@ -407,6 +407,16 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   sectionDivider.style.display = 'none';
   wrap.appendChild(sectionDivider);
 
+  const insertBetweenBtn = document.createElement('button');
+  insertBetweenBtn.type = 'button';
+  insertBetweenBtn.className = 'row-insert-between';
+  insertBetweenBtn.textContent = '+';
+  insertBetweenBtn.title = 'Insert a new row below this row';
+  insertBetweenBtn.addEventListener('click', () => {
+    row.onInsertAfter?.();
+  });
+  wrap.appendChild(insertBetweenBtn);
+
   if (insertBefore != null) {
     editor.insertBefore(wrap, insertBefore);
   } else {
@@ -883,6 +893,7 @@ function mount() {
         <button type="button" id="btn-apply-dir">Apply direction to all</button>
       </div>
       <div class="toolbar-group">
+        <button type="button" id="btn-guide">Quick guide</button>
         <button type="button" id="btn-config">Row settings</button>
         <button type="button" id="btn-export">Copy as text</button>
         <button type="button" id="btn-import">Paste import</button>
@@ -892,6 +903,40 @@ function mount() {
       </div>
     </header>
     <div class="config-panel" id="config-panel" aria-hidden="true"></div>
+    <div class="guide-modal" id="guide-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="guide-title">
+      <div class="guide-sheet">
+        <button type="button" class="guide-close" id="btn-guide-close" aria-label="Close guide">x</button>
+        <h2 id="guide-title">Quick Start Guide</h2>
+        <p class="guide-sub">Short visual walkthrough for writing and arranging songs.</p>
+        <div class="guide-grid">
+          <section class="guide-card">
+            <h3>1. Add Lyrics + Chords</h3>
+            <p>Type lyrics, then double-click above letters to place chords.</p>
+            <div class="guide-visual mono"><span class="guide-accent">  G     D     Em</span><br>lyrics line</div>
+          </section>
+          <section class="guide-card">
+            <h3>2. Build Sections</h3>
+            <p>Set a row to <strong>Header</strong> for Verse/Chorus. Use <strong>End section</strong> when needed.</p>
+            <div class="guide-visual">[ Header: Chorus ]<br>  line 1<br>  line 2<br><span class="guide-accent">  End section</span></div>
+          </section>
+          <section class="guide-card">
+            <h3>3. Reuse Fast</h3>
+            <p>Copy/paste row chords, or copy/clone full section from header actions.</p>
+            <div class="guide-visual">Copy section -> Paste section<br>or<br>Clone section (append)</div>
+          </section>
+          <section class="guide-card">
+            <h3>4. Reorder</h3>
+            <p>Drag with <strong>=</strong>. Drag header to move whole section, row to move only row.</p>
+            <div class="guide-visual">= Header (moves block)<br>= Row (moves single)</div>
+          </section>
+          <section class="guide-card">
+            <h3>5. Export / Preview</h3>
+            <p>Use <strong>Preview HTML</strong> for quick view, then print/download when ready.</p>
+            <div class="guide-visual">Preview HTML -> Download HTML / Print PDF</div>
+          </section>
+        </div>
+      </div>
+    </div>
     <p class="hint">
       Type lyrics in the box, then <strong>double-click above the text</strong> to add a chord and type immediately.
       <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
@@ -906,6 +951,10 @@ function mount() {
   `;
 
   const configPanel = app.querySelector('#config-panel');
+  const guideModal = app.querySelector('#guide-modal');
+  const btnGuide = app.querySelector('#btn-guide');
+  const btnGuideClose = app.querySelector('#btn-guide-close');
+  const btnSongSave = app.querySelector('#btn-song-save');
   configPanel.innerHTML = `
     <fieldset>
       <legend>Row height (min)</legend>
@@ -948,6 +997,63 @@ function mount() {
   const editor = app.querySelector('#editor');
   const selDir = app.querySelector('#sel-dir');
   selDir.value = cfg.defaultDirection;
+
+  const applyToolbarTooltips = () => {
+    const tips = [
+      ['#btn-song-save', 'Save current song. If this is a new song, you will be asked to name it.'],
+      ['#btn-song-save-as', 'Save current content under a new song name.'],
+      ['#btn-song-delete', 'Delete the currently selected saved song.'],
+      ['#btn-song-export', 'Export only the current song as a JSON file.'],
+      ['#btn-song-import', 'Import a single song JSON file.'],
+      ['#btn-song-export-all', 'Export your full song library as one JSON file.'],
+      ['#btn-song-import-all', 'Import a full song library JSON file.'],
+      ['#btn-add', 'Add a new row at the end.'],
+      ['#btn-del', 'Remove the last row.'],
+      ['#btn-apply-dir', 'Apply selected text direction to all rows.'],
+      ['#btn-guide', 'Open the quick visual guide.'],
+      ['#btn-guide-close', 'Close the quick guide.'],
+      ['#btn-config', 'Open row height and font settings.'],
+      ['#btn-export', 'Copy current document as text/JSON to clipboard.'],
+      ['#btn-import', 'Import rows from exported text/JSON.'],
+      ['#btn-preview-html', 'Open a quick HTML preview in a new tab.'],
+      ['#btn-export-html', 'Download current song as an HTML file.'],
+      ['#btn-print-pdf', 'Open print dialog to print or save as PDF.'],
+      ['#sel-song', 'Choose an existing song or start a new one.'],
+      ['#sel-dir', 'Default direction for newly created rows.'],
+    ];
+    for (const [sel, text] of tips) {
+      const el = app.querySelector(sel);
+      if (el) el.title = text;
+    }
+  };
+
+  const updateSaveAttention = () => {
+    const unnamed = !getCurrentSongName();
+    btnSongSave.classList.toggle('attention-save', unnamed);
+    if (unnamed) {
+      btnSongSave.title = 'Save now: this song has no name yet.';
+    } else {
+      btnSongSave.title = 'Save changes to the current song.';
+    }
+  };
+
+  applyToolbarTooltips();
+
+  const setGuideOpen = (open) => {
+    guideModal.classList.toggle('open', open);
+    guideModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+  };
+
+  btnGuide.addEventListener('click', () => setGuideOpen(true));
+  btnGuideClose.addEventListener('click', () => setGuideOpen(false));
+  guideModal.addEventListener('click', (e) => {
+    if (e.target === guideModal) setGuideOpen(false);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && guideModal.classList.contains('open')) {
+      setGuideOpen(false);
+    }
+  });
 
   let layoutFrame = 0;
   const layoutSchedule = (row) => {
@@ -1350,6 +1456,7 @@ function mount() {
       if (name === currentName) opt.selected = true;
       selSong.appendChild(opt);
     });
+    updateSaveAttention();
   };
 
   const switchSong = (name) => {
@@ -1357,6 +1464,7 @@ function mount() {
       setCurrentSongName(null);
       rebuild([{ lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' }]);
       selSong.value = '';
+      updateSaveAttention();
       return;
     }
     
@@ -1365,6 +1473,7 @@ function mount() {
       setCurrentSongName(name);
       rebuild(data);
       selSong.value = name;
+      updateSaveAttention();
     }
   };
 
@@ -1582,6 +1691,7 @@ function mount() {
   });
 
   updateSongList();
+  updateSaveAttention();
 }
 
 mount();

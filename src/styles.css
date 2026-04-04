@@ -95,6 +95,28 @@ button.primary:hover {
   background: #228be6;
 }
 
+#btn-guide {
+  background: #d0ebff;
+  border-color: #74c0fc;
+  color: #0b4f87;
+}
+
+#btn-guide:hover {
+  background: #a5d8ff;
+  border-color: #4dabf7;
+}
+
+button.attention-save {
+  background: #c92a2a;
+  border-color: #a61e1e;
+  color: #fff;
+}
+
+button.attention-save:hover {
+  background: #e03131;
+  border-color: #c92a2a;
+}
+
 .config-panel {
   display: none;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
@@ -106,6 +128,97 @@ button.primary:hover {
 
 .config-panel.open {
   display: grid;
+}
+
+.guide-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.guide-modal.open {
+  display: flex;
+}
+
+.guide-sheet {
+  width: min(900px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: #202126;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  position: relative;
+}
+
+.guide-sheet h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.guide-sub {
+  margin: 0.25rem 0 0.9rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.guide-close {
+  position: absolute;
+  right: 0.65rem;
+  top: 0.6rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 999px;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.guide-card {
+  border: 1px solid var(--border);
+  background: #2a2c33;
+  border-radius: 10px;
+  padding: 0.65rem;
+}
+
+.guide-card h3 {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.guide-card p {
+  margin: 0.35rem 0 0.55rem;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: #d3d7de;
+}
+
+.guide-visual {
+  border: 1px dashed #4a4d55;
+  border-radius: 8px;
+  background: #1b1d22;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: #dde1e8;
+}
+
+.guide-visual.mono {
+  font-family: var(--editor-font);
+}
+
+.guide-accent {
+  color: #7fc6ff;
 }
 
 .config-panel fieldset {
@@ -167,6 +280,7 @@ button.primary:hover {
   border-left: 3px solid var(--border);
   padding-left: 0.5rem;
   margin-bottom: 0.75rem;
+  position: relative;
 }
 
 .stanza-row:focus-within {
@@ -259,6 +373,29 @@ button.primary:hover {
   background: linear-gradient(90deg, var(--accent) 0%, transparent 100%);
   margin: 0.5rem 0;
   margin-left: 0.5rem;
+}
+
+.row-insert-between {
+  position: absolute;
+  right: -1.1rem;
+  bottom: -0.78rem;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  padding: 0;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #0b4f87;
+  background: #d0ebff;
+  border: 1px solid #74c0fc;
+  z-index: 3;
+}
+
+.row-insert-between:hover {
+  background: #a5d8ff;
+  border-color: #4dabf7;
 }
 
 .stanza-row.section-child-row {
