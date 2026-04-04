@@ -1511,7 +1511,8 @@ function mount() {
       return;
     }
 
-    const hostRow = sectionRows[0];
+    const focusedRow = rows.find((r) => r.lyricsEl === document.activeElement);
+    const hostRow = (focusedRow && sectionRows.includes(focusedRow)) ? focusedRow : sectionRows[0];
     if (livePreviewHostRow !== hostRow) {
       liveSectionPreview.remove();
       hostRow.wrap.appendChild(liveSectionPreview);
