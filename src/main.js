@@ -1,4 +1,4 @@
-import { buildPublishDocument, downloadTextFile, openPrintWindow } from './publish.js';
+import { buildPublishDocument, downloadTextFile, openPrintWindow, openPreviewWindow } from './publish.js';
 import { getCaretCoordinates } from './caret.js';
 import { findEditRange, remapChordMap, normalizeChordMap } from './chordMap.js';
 
@@ -114,6 +114,7 @@ function loadDoc() {
       chords: normalizeChordMap(r.chords),
       dir: r.dir === 'rtl' ? 'rtl' : 'ltr',
       kind: normalizeKind(r.kind),
+      sectionEnd: r.sectionEnd === true,
     }));
   }
 
@@ -139,6 +140,7 @@ function loadDoc() {
       chords: normalizeChordMap(r.chords),
       dir: r.dir === 'rtl' ? 'rtl' : 'ltr',
       kind: normalizeKind(r.kind),
+      sectionEnd: r.sectionEnd === true,
     }));
   } catch {
     return [{ lyrics: '', chords: {}, dir: 'ltr' }];
@@ -179,6 +181,7 @@ function normalizeRowArray(data, fallbackDir = 'ltr') {
     chords: normalizeChordMap(r?.chords),
     dir: r?.dir === 'rtl' ? 'rtl' : 'ltr',
     kind: normalizeKind(r?.kind),
+    sectionEnd: r?.sectionEnd === true,
   }));
 }
 
@@ -295,6 +298,15 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     <option value="header">Header (Verse / Chorus)</option>
   `;
   kindSelect.value = wrap.dataset.kind;
+
+  const dragHandle = document.createElement('button');
+  dragHandle.type = 'button';
+  dragHandle.className = 'row-drag-handle';
+  dragHandle.textContent = '\u2261';
+  dragHandle.title = 'Drag to reorder row (header moves whole section)';
+  dragHandle.draggable = true;
+
+  rowMeta.appendChild(dragHandle);
   rowMeta.appendChild(kindLabel);
   rowMeta.appendChild(kindSelect);
 
@@ -329,6 +341,13 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   btnCopySection.title = 'Copy all chords from rows in this section';
   btnCopySection.style.display = data.kind === 'header' ? 'block' : 'none';
 
+  const btnCloneSection = document.createElement('button');
+  btnCloneSection.type = 'button';
+  btnCloneSection.className = 'row-action-btn';
+  btnCloneSection.textContent = 'Clone section';
+  btnCloneSection.title = 'Duplicate this section and append it to the end';
+  btnCloneSection.style.display = data.kind === 'header' ? 'block' : 'none';
+
   const btnPasteSection = document.createElement('button');
   btnPasteSection.type = 'button';
   btnPasteSection.className = 'row-action-btn';
@@ -348,6 +367,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   rowMeta.appendChild(sectionSelectCb);
   rowMeta.appendChild(btnCopyChords);
   rowMeta.appendChild(btnCopySection);
+  rowMeta.appendChild(btnCloneSection);
   rowMeta.appendChild(btnPasteChords);
   rowMeta.appendChild(btnPasteSection);
   rowMeta.appendChild(btnEndSection);
@@ -437,6 +457,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnEndSection.style.display = 'none';
       sectionSelectCb.style.display = 'block';
       btnCopySection.style.display = 'block';
+      btnCloneSection.style.display = 'block';
       btnPasteSection.style.display = 'block';
     } else if (row.kind === 'chords') {
       lyricsEl.placeholder = 'Type letters/spaces to position chords (text hidden in output)';
@@ -446,6 +467,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnEndSection.style.display = 'block';
       sectionSelectCb.style.display = 'none';
       btnCopySection.style.display = 'none';
+      btnCloneSection.style.display = 'none';
       btnPasteSection.style.display = 'none';
     } else {
       lyricsEl.placeholder = 'Lyrics — place the caret on a letter, then set a chord above it.';
@@ -455,6 +477,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
       btnEndSection.style.display = 'block';
       sectionSelectCb.style.display = 'none';
       btnCopySection.style.display = 'none';
+      btnCloneSection.style.display = 'none';
       btnPasteSection.style.display = 'none';
     }
   };
@@ -782,10 +805,17 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
     btnCopySection.textContent = 'Copied!';
     setTimeout(() => { btnCopySection.textContent = prev; }, 1000);
   };
+  row.flashCloneSectionBtn = () => {
+    const prev = btnCloneSection.textContent;
+    btnCloneSection.textContent = 'Cloned!';
+    setTimeout(() => { btnCloneSection.textContent = prev; }, 1000);
+  };
   row.setSectionTag = (text, show) => {
     sectionTag.textContent = text;
     sectionTag.style.display = show ? 'inline-block' : 'none';
   };
+  row.getDragHandle = () => dragHandle;
+  row.setDragTarget = (v) => wrap.classList.toggle('row-drop-target', Boolean(v));
 
   btnCopyChords.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -798,6 +828,10 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   btnCopySection.addEventListener('click', (e) => {
     e.stopPropagation();
     row.onCopySection?.();
+  });
+  btnCloneSection.addEventListener('click', (e) => {
+    e.stopPropagation();
+    row.onCloneSection?.();
   });
   btnPasteSection.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -852,6 +886,7 @@ function mount() {
         <button type="button" id="btn-config">Row settings</button>
         <button type="button" id="btn-export">Copy as text</button>
         <button type="button" id="btn-import">Paste import</button>
+        <button type="button" id="btn-preview-html">Preview HTML</button>
         <button type="button" id="btn-export-html">Download HTML</button>
         <button type="button" id="btn-print-pdf">Print / Save PDF</button>
       </div>
@@ -862,6 +897,8 @@ function mount() {
       <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
       <strong>Double-click a chord</strong> to edit it. <kbd>Escape</kbd> to cancel or <kbd>Enter</kbd> to save.
       Use each row's <strong>Row type</strong> to mark headers (Verse, Chorus, Bridge).
+      Use the <strong>\u2261 handle</strong> to drag a row (or a whole section when dragging a header).
+      Use <strong>Clone section</strong> on headers to append a copy at the end.
       Press <kbd>Enter</kbd> to create a new line box after the current one.
       <strong>Download HTML</strong> / <strong>Print / Save PDF</strong> use the same layout.
     </p>
@@ -992,6 +1029,15 @@ function mount() {
 
   let chordsClipboard = [];
   let sectionClipboard = [];
+  let dragCtx = null;
+
+  const snapshotRow = (r) => ({
+    lyrics: r.lyricsEl.value,
+    chords: normalizeChordMap(r.chords),
+    dir: r.wrap.dataset.dir === 'rtl' ? 'rtl' : 'ltr',
+    kind: normalizeKind(r.wrap.dataset.kind),
+    sectionEnd: r._sectionEnd === true,
+  });
 
   const getSectionRows = (headerRow) => {
     const headerIdx = rows.indexOf(headerRow);
@@ -1036,25 +1082,106 @@ function mount() {
       }
       persistAll();
     };
-    if (row.kind === 'header') {
-      row.onCopySection = () => {
-        const section = getSectionRows(row);
-        const nonHeaderRows = section.filter((r) => r.kind !== 'header');
-        sectionClipboard = nonHeaderRows.map((r) => ({ ...normalizeChordMap(r.chords) }));
-        updatePasteButtons();
-        row.flashCopySectionBtn?.();
-      };
-      row.onPasteSection = () => {
-        if (sectionClipboard.length === 0) return;
-        const targetSection = getSectionRows(row);
-        const targetNonHeaders = targetSection.filter((r) => r.kind !== 'header');
-        for (let i = 0; i < sectionClipboard.length && i < targetNonHeaders.length; i++) {
-          targetNonHeaders[i].chords = { ...sectionClipboard[i] };
-          layoutSchedule(targetNonHeaders[i]);
-        }
-        persistAll();
-      };
-    }
+    row.onCopySection = () => {
+      if (row.kind !== 'header') return;
+      const section = getSectionRows(row);
+      const nonHeaderRows = section.filter((r) => r.kind !== 'header');
+      sectionClipboard = nonHeaderRows.map((r) => ({ ...normalizeChordMap(r.chords) }));
+      updatePasteButtons();
+      row.flashCopySectionBtn?.();
+    };
+    row.onCloneSection = () => {
+      if (row.kind !== 'header') return;
+      const section = getSectionRows(row);
+      if (section.length === 0) return;
+      const snapshots = section.map((r) => snapshotRow(r));
+      for (const d of snapshots) {
+        const clone = createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule);
+        rows.push(clone);
+        wireRow(clone);
+      }
+      row.flashCloneSectionBtn?.();
+      onRowChange();
+    };
+    row.onPasteSection = () => {
+      if (row.kind !== 'header' || sectionClipboard.length === 0) return;
+      const targetSection = getSectionRows(row);
+      const targetNonHeaders = targetSection.filter((r) => r.kind !== 'header');
+      for (let i = 0; i < sectionClipboard.length && i < targetNonHeaders.length; i++) {
+        targetNonHeaders[i].chords = { ...sectionClipboard[i] };
+        layoutSchedule(targetNonHeaders[i]);
+      }
+      persistAll();
+    };
+  };
+
+  const moveRows = (movingRows, targetRow, placeAfter) => {
+    if (!movingRows || movingRows.length === 0 || !targetRow) return;
+    const movingSet = new Set(movingRows);
+    if (movingSet.has(targetRow)) return;
+
+    const rest = rows.filter((r) => !movingSet.has(r));
+    const base = rest.indexOf(targetRow);
+    if (base < 0) return;
+    const insertAt = placeAfter ? base + 1 : base;
+    const next = [...rest.slice(0, insertAt), ...movingRows, ...rest.slice(insertAt)];
+    rebuild(next.map((r) => snapshotRow(r)));
+  };
+
+  const wireDragHandlers = (row) => {
+    const handle = row.getDragHandle?.();
+    if (!handle) return;
+
+    handle.addEventListener('dragstart', (e) => {
+      const movingRows = row.kind === 'header' ? getSectionRows(row) : [row];
+      dragCtx = { movingRows };
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', 'row-move');
+      row.wrap.classList.add('row-drag-origin');
+    });
+
+    handle.addEventListener('dragend', () => {
+      dragCtx = null;
+      for (const r of rows) {
+        r.setDragTarget?.(false);
+        r.wrap.classList.remove('row-drag-origin');
+      }
+    });
+
+    row.wrap.addEventListener('dragover', (e) => {
+      if (!dragCtx) return;
+      e.preventDefault();
+      const movingSet = new Set(dragCtx.movingRows);
+      if (movingSet.has(row)) return;
+      for (const r of rows) r.setDragTarget?.(false);
+      row.setDragTarget?.(true);
+      const rect = row.wrap.getBoundingClientRect();
+      dragCtx.placeAfter = e.clientY > rect.top + rect.height / 2;
+      dragCtx.targetRow = row;
+    });
+
+    row.wrap.addEventListener('dragleave', () => {
+      row.setDragTarget?.(false);
+    });
+
+    row.wrap.addEventListener('drop', (e) => {
+      if (!dragCtx) return;
+      e.preventDefault();
+      const { movingRows, targetRow, placeAfter } = dragCtx;
+      dragCtx = null;
+      for (const r of rows) r.setDragTarget?.(false);
+      moveRows(movingRows, targetRow || row, Boolean(placeAfter));
+    });
+  };
+
+  const wireRow = (row) => {
+    wireInsertHandler(row);
+    wireChordsHandlers(row);
+    wireDragHandlers(row);
+    row.lyricsEl.addEventListener('focus', () => {
+      activeSectionId = row.wrap.dataset.sectionId || null;
+      refreshSectionVisuals();
+    });
   };
 
   const wireInsertHandler = (row) => {
@@ -1076,10 +1203,9 @@ function mount() {
     } else {
       rows.push(newRow);
     }
-    wireInsertHandler(newRow);
-    wireChordsHandlers(newRow);
+    wireRow(newRow);
     updatePasteButtons();
-    persistAll();
+    onRowChange();
     newRow.lyricsEl.focus();
   };
 
@@ -1090,12 +1216,7 @@ function mount() {
     editor.innerHTML = '';
     rows = data.map((d) => createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule));
     rows.forEach((r) => {
-      wireInsertHandler(r);
-      wireChordsHandlers(r);
-      r.lyricsEl.addEventListener('focus', () => {
-        activeSectionId = r.wrap.dataset.sectionId || null;
-        refreshSectionVisuals();
-      });
+      wireRow(r);
       r.layoutChords?.();
     });
     refreshSectionVisuals();
@@ -1116,10 +1237,9 @@ function mount() {
     const d = { lyrics: '', chords: {}, dir: cfg.defaultDirection, kind: 'line' };
     const row = createRow(editor, d, () => cfg, onRowChange, null, layoutSchedule);
     rows.push(row);
-    wireInsertHandler(row);
-    wireChordsHandlers(row);
+    wireRow(row);
     updatePasteButtons();
-    persistAll();
+    onRowChange();
     row.lyricsEl.focus();
     layoutSchedule(row);
   });
@@ -1129,7 +1249,7 @@ function mount() {
     const last = rows.pop();
     last.dispose?.();
     last.wrap.remove();
-    persistAll();
+    onRowChange();
   });
 
   app.querySelector('#btn-apply-dir').addEventListener('click', () => {
@@ -1178,6 +1298,14 @@ function mount() {
     if (text == null) return;
     const pairs = importText(text, cfg.defaultDirection);
     rebuild(pairs);
+  });
+
+  app.querySelector('#btn-preview-html').addEventListener('click', () => {
+    const current = getCurrentSongName();
+    const title = current ? String(current) : 'Lyrics & chords';
+    const snapshots = collectSnapshots(rows);
+    const html = buildPublishDocument(snapshots, cfg, { title });
+    openPreviewWindow(html);
   });
 
   const publishTitle = () => {

@@ -293,3 +293,22 @@ export function openPrintWindow(html) {
     alert('Error opening print window: ' + err.message);
   }
 }
+
+export function openPreviewWindow(html) {
+  try {
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
+    const w = window.open(blobUrl, '_blank');
+    if (!w) {
+      URL.revokeObjectURL(blobUrl);
+      alert('Pop-up blocked. Allow pop-ups for this site to preview HTML.');
+      return;
+    }
+    // Revoke shortly after the new tab has consumed the blob URL.
+    setTimeout(() => {
+      URL.revokeObjectURL(blobUrl);
+    }, 3000);
+  } catch (err) {
+    alert('Error opening preview window: ' + err.message);
+  }
+}
