@@ -138,6 +138,11 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
   const isHebrewTitle = /[\u0590-\u05FF]/.test(rawTitle);
   const titleClass = isHebrewTitle ? 'title-rtl' : 'title-ltr';
   const titleDir = isHebrewTitle ? 'rtl' : 'ltr';
+  const firstDir = Array.isArray(snapshots)
+    ? (snapshots.find((r) => r?.dir === 'rtl' || r?.dir === 'ltr')?.dir || null)
+    : null;
+  const docDir = firstDir || titleDir;
+  const docClass = docDir === 'rtl' ? 'doc-rtl' : 'doc-ltr';
   const fontFamily = cfg.useMonospace ? monoStack() : systemStack();
   const layoutCols = Math.min(3, Math.max(1, Number(options?.layout?.columns) || 1));
   const layoutOrder = Array.isArray(options?.layout?.order) ? options.layout.order : [];
@@ -253,6 +258,38 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
       break-inside: avoid;
       margin-bottom: 0.5rem;
     }
+    .layout-page + .layout-page {
+      margin-top: 1.4rem;
+      padding-top: 1.1rem;
+      border-top: 3px dashed #cbd5e1;
+      position: relative;
+      width: 70%;
+    }
+    .doc-ltr .layout-page + .layout-page {
+      margin-left: 0;
+      margin-right: auto;
+    }
+    .doc-rtl .layout-page + .layout-page {
+      margin-left: auto;
+      margin-right: 0;
+    }
+    .layout-page + .layout-page::before {
+      content: 'Page break';
+      position: absolute;
+      top: -0.85rem;
+      left: 0;
+      transform: none;
+      padding: 0.1rem 0.5rem;
+      background: #fff;
+      color: #64748b;
+      font: 600 0.72rem/1 system-ui, "Segoe UI", sans-serif;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .doc-rtl .layout-page + .layout-page::before {
+      left: auto;
+      right: 0;
+    }
     .layout-col {
       display: flex;
       flex-direction: column;
@@ -344,6 +381,14 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
       .layout-grid {
         break-inside: auto;
       }
+      .layout-page + .layout-page {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: 0;
+      }
+      .layout-page + .layout-page::before {
+        content: none;
+      }
       .layout-section {
         break-inside: avoid;
       }
@@ -351,7 +396,7 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
     @page { margin: 14mm; }
   </style>
 </head>
-<body>
+<body class="${docClass}">
   <h1 class="${titleClass}" dir="${titleDir}">${title}</h1>
   <main>
 ${blocks}
