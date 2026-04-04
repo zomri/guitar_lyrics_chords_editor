@@ -75,7 +75,11 @@ function renderChordsOnly(chords, fallbackText, cfg) {
  * @param {{ title?: string }} options
  */
 export function buildPublishDocument(snapshots, cfg, options = {}) {
-  const title = escapeHtml(options.title?.trim() || 'Lyrics & chords');
+  const rawTitle = String(options.title?.trim() || 'Lyrics & chords');
+  const title = escapeHtml(rawTitle);
+  const isHebrewTitle = /[\u0590-\u05FF]/.test(rawTitle);
+  const titleClass = isHebrewTitle ? 'title-rtl' : 'title-ltr';
+  const titleDir = isHebrewTitle ? 'rtl' : 'ltr';
   const fontFamily = cfg.useMonospace ? monoStack() : systemStack();
   const blocks = snapshots
     .map((row) => {
@@ -116,6 +120,14 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
       margin: 0 0 1.25rem;
       border-bottom: 1px solid #ccc;
       padding-bottom: 0.5rem;
+    }
+    h1.title-ltr {
+      text-align: left;
+      direction: ltr;
+    }
+    h1.title-rtl {
+      text-align: right;
+      direction: rtl;
     }
     .block {
       margin-bottom: 0.75rem;
@@ -203,7 +215,7 @@ export function buildPublishDocument(snapshots, cfg, options = {}) {
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
+  <h1 class="${titleClass}" dir="${titleDir}">${title}</h1>
   <main>
 ${blocks}
   </main>
