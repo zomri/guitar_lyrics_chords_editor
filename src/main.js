@@ -263,6 +263,32 @@ function importText(text, defaultDirection = 'ltr') {
   return normalizeRowArray(rows, defaultDirection);
 }
 
+function importLyricsText(text, defaultDirection = 'ltr') {
+  const raw = String(text || '').replace(/\r\n/g, '\n');
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return [{ lyrics: '', chords: {}, dir: defaultDirection, kind: 'line', sectionEnd: false }];
+  }
+
+  const dir = defaultDirection === 'rtl' ? 'rtl' : 'ltr';
+  const blocks = trimmed
+    .split(/\n\s*\n+/)
+    .map((block) => block.split('\n').map((line) => line.replace(/\s+$/g, '')))
+    .map((lines) => lines.filter((line, index, arr) => !(index === arr.length - 1 && line === '')))
+    .filter((lines) => lines.some((line) => line.trim().length > 0));
+
+  const rows = [];
+  for (const lines of blocks) {
+    rows.push({ lyrics: '', chords: {}, dir, kind: 'header', sectionEnd: false });
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      rows.push({ lyrics: line, chords: {}, dir, kind: 'line', sectionEnd: false });
+    }
+  }
+
+  return rows.length > 0 ? rows : [{ lyrics: '', chords: {}, dir, kind: 'line', sectionEnd: false }];
+}
+
 function collectSnapshots(rows) {
   return rows.map((r) => ({
     lyrics: r.lyricsEl.value,
@@ -351,7 +377,7 @@ function createRow(editor, data, getCfg, onChange, insertBefore = null, layoutSc
   const btnCopySection = document.createElement('button');
   btnCopySection.type = 'button';
   btnCopySection.className = 'row-action-btn';
-  btnCopySection.textContent = 'Copy section';
+  btnCopySection.textContent = 'Copy chords';
   btnCopySection.title = 'Copy all chords from rows in this section';
   btnCopySection.style.display = data.kind === 'header' ? 'block' : 'none';
 
@@ -1002,6 +1028,7 @@ function mount() {
           <button type="button" id="btn-song-save">Save</button>
           <button type="button" id="btn-song-save-as">Save As</button>
           <button type="button" id="btn-song-delete">Delete</button>
+          <button type="button" id="btn-import-lyrics">Import lyrics</button>
           <button type="button" id="btn-song-export">Export song</button>
           <button type="button" id="btn-song-import">Import song</button>
           <button type="button" id="btn-song-export-all">Export all songs</button>
@@ -1065,6 +1092,24 @@ function mount() {
         </div>
       </div>
     </div>
+    <div class="guide-modal" id="lyrics-import-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="lyrics-import-title">
+      <div class="guide-sheet lyrics-import-sheet">
+        <button type="button" class="guide-close" id="btn-lyrics-import-close" aria-label="Close import lyrics">x</button>
+        <h2 id="lyrics-import-title">Import Lyrics</h2>
+        <p class="guide-sub">Paste lyrics below. Empty lines create a new section, and the editor will insert a blank Section header before each section so you can name it.</p>
+        <textarea id="lyrics-import-text" class="lyrics-import-text" placeholder="Paste lyrics here...
+
+Verse line 1
+Verse line 2
+
+Chorus line 1
+Chorus line 2"></textarea>
+        <div class="lyrics-import-actions">
+          <button type="button" id="btn-lyrics-import-apply" class="primary">Import lyrics</button>
+          <button type="button" id="btn-lyrics-import-cancel">Cancel</button>
+        </div>
+      </div>
+    </div>
     <p class="hint">
       Type lyrics in the box, then <strong>double-click above the text</strong> to add a chord and type immediately.
       <strong>Click a chord to select it</strong>, then drag to move or press <kbd>Delete</kbd> to remove.
@@ -1099,8 +1144,14 @@ function mount() {
 
   const configPanel = app.querySelector('#config-panel');
   const guideModal = app.querySelector('#guide-modal');
+  const lyricsImportModal = app.querySelector('#lyrics-import-modal');
   const btnGuide = app.querySelector('#btn-guide');
   const btnGuideClose = app.querySelector('#btn-guide-close');
+  const btnImportLyrics = app.querySelector('#btn-import-lyrics');
+  const btnLyricsImportClose = app.querySelector('#btn-lyrics-import-close');
+  const btnLyricsImportCancel = app.querySelector('#btn-lyrics-import-cancel');
+  const btnLyricsImportApply = app.querySelector('#btn-lyrics-import-apply');
+  const lyricsImportText = app.querySelector('#lyrics-import-text');
   const btnLayoutReset = app.querySelector('#btn-layout-reset');
   const selLayoutCols = app.querySelector('#sel-layout-cols');
   const layoutStats = app.querySelector('#layout-stats');
@@ -1160,6 +1211,7 @@ function mount() {
       ['#btn-song-save', 'Save current song. If this is a new song, you will be asked to name it.'],
       ['#btn-song-save-as', 'Save current content under a new song name.'],
       ['#btn-song-delete', 'Delete the currently selected saved song.'],
+      ['#btn-import-lyrics', 'Paste plain lyrics and split them into sections by empty lines.'],
       ['#btn-song-export', 'Export only the current song as a JSON file.'],
       ['#btn-song-import', 'Import a single song JSON file.'],
       ['#btn-song-export-all', 'Export your full song library as one JSON file.'],
@@ -1198,15 +1250,54 @@ function mount() {
     guideModal.setAttribute('aria-hidden', open ? 'false' : 'true');
   };
 
+  const setLyricsImportOpen = (open) => {
+    lyricsImportModal.classList.toggle('open', open);
+    lyricsImportModal.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) {
+      requestAnimationFrame(() => lyricsImportText.focus());
+    }
+  };
+
   btnGuide.addEventListener('click', () => setGuideOpen(true));
   btnGuideClose.addEventListener('click', () => setGuideOpen(false));
+  btnImportLyrics.addEventListener('click', () => setLyricsImportOpen(true));
+  btnLyricsImportClose.addEventListener('click', () => setLyricsImportOpen(false));
+  btnLyricsImportCancel.addEventListener('click', () => setLyricsImportOpen(false));
   guideModal.addEventListener('click', (e) => {
     if (e.target === guideModal) setGuideOpen(false);
+  });
+  lyricsImportModal.addEventListener('click', (e) => {
+    if (e.target === lyricsImportModal) setLyricsImportOpen(false);
   });
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && guideModal.classList.contains('open')) {
       setGuideOpen(false);
     }
+    if (e.key === 'Escape' && lyricsImportModal.classList.contains('open')) {
+      setLyricsImportOpen(false);
+    }
+  });
+
+  btnLyricsImportApply.addEventListener('click', () => {
+    const text = lyricsImportText.value;
+    if (!text.trim()) {
+      setLyricsImportOpen(false);
+      return;
+    }
+    const hasMeaningfulContent = rows.some((r) => {
+      const hasLyrics = String(r.lyricsEl?.value || '').trim().length > 0;
+      const hasChords = Object.keys(normalizeChordMap(r.chords || {})).length > 0;
+      return hasLyrics || hasChords;
+    });
+    if (hasMeaningfulContent && !confirm('Replace the current document with imported lyrics?')) {
+      return;
+    }
+    const importedRows = importLyricsText(text, cfg.defaultDirection);
+    layoutOrder = [];
+    selLayoutCols.value = DEFAULT_LAYOUT_COLS;
+    rebuild(importedRows, { resetHistory: true });
+    setLyricsImportOpen(false);
+    lyricsImportText.value = '';
   });
 
   let layoutFrame = 0;

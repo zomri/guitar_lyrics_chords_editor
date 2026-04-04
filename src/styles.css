@@ -302,6 +302,35 @@ button.attention-save:hover {
   position: relative;
 }
 
+.lyrics-import-sheet {
+  width: min(760px, 100%);
+}
+
+.lyrics-import-text {
+  width: 100%;
+  min-height: 280px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #181a1f;
+  color: var(--text);
+  padding: 0.75rem 0.85rem;
+  font: inherit;
+  line-height: 1.45;
+}
+
+.lyrics-import-text:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.lyrics-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
 .guide-sheet h2 {
   margin: 0;
   font-size: 1.1rem;
